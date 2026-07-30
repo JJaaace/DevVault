@@ -7,6 +7,7 @@ import { LoginPage } from './pages/LoginPage'
 import { SignupPage } from './pages/SignupPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { PortfolioPage } from './pages/PortfolioPage'
 import { EditProfilePage } from './pages/EditProfilePage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectFormPage } from './pages/ProjectFormPage'
@@ -65,6 +66,7 @@ function App() {
           />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/portfolio/:username" element={<PortfolioPage />} />
           <Route
             path="/dashboard"
             element={

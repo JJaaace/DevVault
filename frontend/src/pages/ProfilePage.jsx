@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
 import { authenticatedRequest } from '../lib/api'
 import { ProfileForm } from '../components/ProfileForm'
@@ -15,6 +15,7 @@ export function ProfilePage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [errors, setErrors] = useState({})
+  const [copyState, setCopyState] = useState('')
 
   useEffect(() => {
     async function loadProfile() {
@@ -70,6 +71,24 @@ export function ProfilePage() {
     }
 
     return { message: payload }
+  }
+
+  const publicPortfolioUrl = profile?.username && typeof window !== 'undefined'
+    ? `${window.location.origin}/portfolio/${profile.username}`
+    : ''
+
+  const handleCopyPortfolioLink = async () => {
+    if (!publicPortfolioUrl || !navigator.clipboard) {
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(publicPortfolioUrl)
+      setCopyState('Portfolio link copied.')
+      window.setTimeout(() => setCopyState(''), 2500)
+    } catch {
+      setCopyState('Unable to copy automatically. Use the link below.')
+    }
   }
 
   const handleSubmit = async (formData) => {
@@ -144,6 +163,33 @@ export function ProfilePage() {
           <div className="widget-card border border-[rgba(234,139,33,0.18)] bg-[rgba(255,247,233,0.92)] p-4 text-sm text-[var(--color-brand-ink)]">
             <div className="font-semibold">{success}</div>
             <p className="mt-1 text-[var(--color-text-soft)]">Your profile is now saved locally and will appear on your dashboard. The dashboard completion meter will update immediately.</p>
+          </div>
+        ) : null}
+
+        {profile ? (
+          <div className="widget-card widget-card--accent p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="section-eyebrow">Public portfolio</p>
+                <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--color-text)]">Share a read-only view of your work</h3>
+                <p className="mt-2 text-sm text-[var(--color-text-soft)]">Anyone with this link can view your portfolio, but they cannot edit your data.</p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Link to={`/portfolio/${profile.username}`} className="button-primary px-4 py-2 text-sm" target="_blank" rel="noreferrer">
+                  View portfolio
+                </Link>
+                <button type="button" onClick={handleCopyPortfolioLink} className="button-secondary px-4 py-2 text-sm">
+                  Copy link
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[1.1rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--color-text-soft)]">
+              {publicPortfolioUrl}
+            </div>
+
+            {copyState ? <p className="mt-3 text-sm text-[var(--color-brand-ink)]">{copyState}</p> : null}
           </div>
         ) : null}
 

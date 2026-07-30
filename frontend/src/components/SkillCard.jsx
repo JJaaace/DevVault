@@ -5,7 +5,7 @@ function RelatedProjectChip({ project }) {
   return <span className="chip chip--accent">{project.title}</span>
 }
 
-export function SkillCard({ skill, onEdit, onDelete }) {
+export function SkillCard({ skill, onEdit, onDelete, readOnly = false }) {
   const levelMeta = getSkillLevelMeta(skill.experienceLevel)
   const relatedProjects = skill.relatedProjects || []
 
@@ -42,14 +42,16 @@ export function SkillCard({ skill, onEdit, onDelete }) {
           <p className="text-xs uppercase tracking-[0.28em] text-[var(--color-text-muted)]">
             Color {skill.color.toUpperCase()}
           </p>
-          <div className="flex gap-3">
-            <button type="button" onClick={onEdit} className="button-secondary px-4 py-2 text-sm">
-              Edit
-            </button>
-            <button type="button" onClick={onDelete} className="button-secondary px-4 py-2 text-sm">
-              Delete
-            </button>
-          </div>
+          {readOnly ? null : (
+            <div className="flex gap-3">
+              <button type="button" onClick={onEdit} className="button-secondary px-4 py-2 text-sm">
+                Edit
+              </button>
+              <button type="button" onClick={onDelete} className="button-secondary px-4 py-2 text-sm">
+                Delete
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </article>

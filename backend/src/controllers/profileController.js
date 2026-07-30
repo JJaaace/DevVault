@@ -1,5 +1,3 @@
-let memoryProfiles = []
-
 let prisma = null
 
 try {
@@ -11,10 +9,13 @@ try {
   prisma = null
 }
 
+const { getLocalStore, updateLocalStore } = require('../services/localStore')
+
 function validateProfilePayload(payload) {
   const errors = {}
 
   const isHttpUrl = (value) => !value || /^https?:\/\//i.test(value)
+  const isImageDataUrl = (value) => !value || /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(value)
   const isInteger = (value) => value === undefined || value === null || value === '' || Number.isInteger(Number(value))
 
   if (!payload.firstName || payload.firstName.trim().length < 2) {
@@ -33,8 +34,8 @@ function validateProfilePayload(payload) {
     errors.bio = 'Bio must be at least 10 characters long.'
   }
 
-  if (!isHttpUrl(payload.profileImageUrl)) {
-    errors.profileImageUrl = 'Profile image URL must start with http:// or https://.'
+  if (!isHttpUrl(payload.profileImageUrl) && !isImageDataUrl(payload.profileImageUrl)) {
+    errors.profileImageUrl = 'Profile image must be a valid upload or image URL.'
   }
 
   if (!isHttpUrl(payload.githubUrl)) {
@@ -118,7 +119,80 @@ function buildProfilePayload(payload, clerkUserId) {
 }
 
 function findMemoryProfile(clerkUserId) {
-  return memoryProfiles.find((profile) => profile.clerkUserId === clerkUserId) || null
+  return getLocalStore().profiles.find((profile) => profile.clerkUserId === clerkUserId) || null
+}
+
+function findMemoryProfileByUsername(username) {
+  return getLocalStore().profiles.find((profile) => profile.username === username) || null
+}
+
+function serializePublicProfile(profile) {
+  if (!profile) {
+    return null
+  }
+
+  const { clerkUserId, ...publicProfile } = profile
+  return publicProfile
+}
+
+function serializePublicProject(project) {
+  const { ownerClerkUserId, ...publicProject } = project
+  return publicProject
+}
+
+function serializePublicSkill(skill) {
+  const { ownerClerkUserId, relatedProjects = [], ...publicSkill } = skill
+
+  return {
+    ...publicSkill,
+    relatedProjects: relatedProjects.map(serializePublicProject),
+  }
+}
+
+async function getPublicPortfolio(req, res) {
+  try {
+    const username = typeof req.params.username === 'string' ? req.params.username.trim() : ''
+
+    if (username.length < 2) {
+      return res.status(400).json({ message: 'Username is required.' })
+    }
+
+    let profile = null
+
+    if (prisma) {
+      try {
+        profile = await prisma.profile.findUnique({
+          where: { username },
+        })
+      } catch (error) {
+        // fall through to memory storage
+      }
+    }
+
+    if (!profile) {
+      profile = findMemoryProfileByUsername(username)
+    }
+
+    if (!profile) {
+      return res.status(404).json({ message: 'Portfolio not found.' })
+    }
+
+    const { listProjects } = require('../services/projectService')
+    const { listSkills } = require('../services/skillService')
+
+    const [projects, skills] = await Promise.all([
+      listProjects(profile.clerkUserId),
+      listSkills(profile.clerkUserId),
+    ])
+
+    return res.json({
+      profile: serializePublicProfile(profile),
+      projects: projects.filter((project) => project.status !== 'ARCHIVED').map(serializePublicProject),
+      skills: skills.map(serializePublicSkill),
+    })
+  } catch (error) {
+    return res.status(500).json({ message: 'Unable to load portfolio.', error: error.message })
+  }
 }
 
 async function getProfile(req, res) {
@@ -182,7 +256,10 @@ async function createProfile(req, res) {
     }
 
     const profile = buildProfilePayload(req.body, req.auth.userId)
-    memoryProfiles.push(profile)
+    updateLocalStore((store) => ({
+      ...store,
+      profiles: [...store.profiles, profile],
+    }))
     return res.status(201).json(profile)
   } catch (error) {
     return res.status(500).json({ message: 'Unable to create profile.', error: error.message })
@@ -227,9 +304,12 @@ async function updateProfile(req, res) {
       ...buildProfilePayload(req.body, req.auth.userId),
     }
 
-    memoryProfiles = memoryProfiles.map((profile) =>
-      profile.clerkUserId === req.auth.userId ? updatedProfile : profile,
-    )
+    updateLocalStore((store) => ({
+      ...store,
+      profiles: store.profiles.map((profile) =>
+        profile.clerkUserId === req.auth.userId ? updatedProfile : profile,
+      ),
+    }))
 
     return res.json(updatedProfile)
   } catch (error) {
@@ -264,7 +344,10 @@ async function deleteProfile(req, res) {
       return res.status(404).json({ message: 'Profile not found.' })
     }
 
-    memoryProfiles = memoryProfiles.filter((profile) => profile.clerkUserId !== req.auth.userId)
+    updateLocalStore((store) => ({
+      ...store,
+      profiles: store.profiles.filter((profile) => profile.clerkUserId !== req.auth.userId),
+    }))
     return res.status(204).send()
   } catch (error) {
     return res.status(500).json({ message: 'Unable to delete profile.', error: error.message })
@@ -273,6 +356,7 @@ async function deleteProfile(req, res) {
 
 module.exports = {
   getProfile,
+  getPublicPortfolio,
   createProfile,
   updateProfile,
   deleteProfile,

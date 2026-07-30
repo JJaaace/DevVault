@@ -108,7 +108,7 @@ export function DashboardPage() {
   const heroQuickActions = buildHeroQuickActions(profile, projects, skills, heroDeadline)
 
   return (
-    <div className="page-shell page-stack pb-14">
+    <div className="page-shell page-stack gap-4 pb-12">
       <WorkspaceHero
         greeting={greeting}
         userName={userName}
@@ -127,16 +127,14 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-12">
-        <div className="xl:col-span-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
+        <div className="flex min-w-0 flex-col gap-4">
           <ProfileCompletionCard
             profile={profile}
             actionTo={profile ? '/profile/edit' : '/profile'}
             actionLabel={profile ? 'Refine profile' : 'Create profile'}
           />
-        </div>
 
-        <div className="xl:col-span-8">
           <WorkspaceWidget
             eyebrow="Projects"
             title="Projects progress"
@@ -148,7 +146,7 @@ export function DashboardPage() {
             ) : projects.length ? (
               <div className="space-y-4">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-                  <ProgressRing value={projectSummary.average} label="avg" color="#ea8b21" size={128}>
+                  <ProgressRing value={projectSummary.average} label="avg" color="#ea8b21" size={112}>
                     <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{projectSummary.average}%</span>
                   </ProgressRing>
                   <div className="grid flex-1 gap-3">
@@ -181,9 +179,7 @@ export function DashboardPage() {
               </div>
             )}
           </WorkspaceWidget>
-        </div>
 
-        <div className="xl:col-span-6">
           <WorkspaceWidget
             eyebrow="Skills"
             title="Skills overview"
@@ -195,7 +191,7 @@ export function DashboardPage() {
             ) : skills.length ? (
               <div className="space-y-5">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-                  <ProgressRing value={skillSummary.average} label="avg" color="#d96a16" size={120}>
+                  <ProgressRing value={skillSummary.average} label="avg" color="#d96a16" size={108}>
                     <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{skillSummary.average}%</span>
                   </ProgressRing>
                   <div className="flex flex-1 flex-col gap-3">
@@ -229,59 +225,7 @@ export function DashboardPage() {
               </div>
             )}
           </WorkspaceWidget>
-        </div>
 
-        <div className="xl:col-span-6">
-          <WorkspaceWidget
-            eyebrow="Career"
-            title="Certifications"
-            description="Keep badges, renewals, and credentials ready for recruiter review."
-          >
-            <div className="space-y-4">
-              {certifications.map((item) => (
-                <div key={item.name} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-[var(--color-text)]">{item.name}</p>
-                      <p className="text-xs text-[var(--color-text-soft)]">{item.note}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-[var(--color-brand-ink)]">{item.progress}%</span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16]" style={{ width: `${item.progress}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </WorkspaceWidget>
-        </div>
-
-        <div className="xl:col-span-6">
-          <WorkspaceWidget
-            eyebrow="Career"
-            title="Internship tracker"
-            description="A clean pipeline for application flow and momentum."
-          >
-            <div className="space-y-4">
-              {internshipStages.map((stage, index) => (
-                <div key={stage.stage} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-[var(--color-text)]">{stage.stage}</p>
-                      <p className="text-xs text-[var(--color-text-soft)]">{stage.description}</p>
-                    </div>
-                    <span className={`chip ${index === 1 ? 'chip--accent' : ''}`.trim()}>{stage.count}</span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16]" style={{ width: `${Math.max(20, stage.count * 20)}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </WorkspaceWidget>
-        </div>
-
-        <div className="xl:col-span-7">
           <WorkspaceWidget
             eyebrow="Activity"
             title="Recent activity"
@@ -313,7 +257,55 @@ export function DashboardPage() {
           </WorkspaceWidget>
         </div>
 
-        <div className="xl:col-span-5">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+            <WorkspaceWidget
+              eyebrow="Career"
+              title="Certifications"
+              description="Keep badges, renewals, and credentials ready for recruiter review."
+            >
+              <div className="space-y-4">
+                {certifications.map((item) => (
+                  <div key={item.name} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-[var(--color-text)]">{item.name}</p>
+                        <p className="text-xs text-[var(--color-text-soft)]">{item.note}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-[var(--color-brand-ink)]">{item.progress}%</span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
+                      <div className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16]" style={{ width: `${item.progress}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </WorkspaceWidget>
+
+            <WorkspaceWidget
+              eyebrow="Career"
+              title="Internship tracker"
+              description="A clean pipeline for application flow and momentum."
+            >
+              <div className="space-y-4">
+                {internshipStages.map((stage, index) => (
+                  <div key={stage.stage} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-[var(--color-text)]">{stage.stage}</p>
+                        <p className="text-xs text-[var(--color-text-soft)]">{stage.description}</p>
+                      </div>
+                      <span className={`chip ${index === 1 ? 'chip--accent' : ''}`.trim()}>{stage.count}</span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
+                      <div className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16]" style={{ width: `${Math.max(20, stage.count * 20)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </WorkspaceWidget>
+          </div>
+
           <WorkspaceWidget
             eyebrow="Focus"
             title="Learning goals"
@@ -336,9 +328,7 @@ export function DashboardPage() {
               ))}
             </div>
           </WorkspaceWidget>
-        </div>
 
-        <div className="xl:col-span-6">
           <WorkspaceWidget
             eyebrow="Planning"
             title="Upcoming deadlines"

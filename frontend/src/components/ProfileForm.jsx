@@ -24,6 +24,10 @@ function normalizeNumberInput(value) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function isImageSource(value) {
+  return typeof value === 'string' && value.length > 0
+}
+
 function fieldClass(error) {
   return `field-input ${error ? 'border-[#b83a1c] ring-2 ring-[rgba(185,56,28,0.12)]' : ''}`.trim()
 }
@@ -56,12 +60,13 @@ function Field({ label, name, value, onChange, placeholder, error, type = 'text'
 }
 
 export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, errors = {} }) {
+  const initialImageUrl = profile?.profileImageUrl ?? profile?.profileImage ?? ''
   const [formData, setFormData] = useState(() => ({
     firstName: profile?.firstName ?? '',
     lastName: profile?.lastName ?? '',
     username: profile?.username ?? '',
     bio: profile?.bio ?? '',
-    profileImageUrl: profile?.profileImageUrl ?? profile?.profileImage ?? '',
+    profileImageUrl: initialImageUrl,
     school: profile?.school ?? profile?.university ?? '',
     graduationYear: profile?.graduationYear ?? '',
     major: profile?.major ?? '',
@@ -76,10 +81,43 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
     linkedinUrl: profile?.linkedinUrl ?? '',
     websiteUrl: profile?.websiteUrl ?? '',
   }))
+  const [imagePreview, setImagePreview] = useState(initialImageUrl)
+  const [uploadError, setUploadError] = useState('')
 
   const handleChange = (event) => {
     const { name, value } = event.target
     setFormData((current) => ({ ...current, [name]: value }))
+  }
+
+  const handleImageUpload = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please choose an image file.')
+      return
+    }
+
+    setUploadError('')
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      setFormData((current) => ({ ...current, profileImageUrl: result }))
+      setImagePreview(result)
+    }
+    reader.onerror = () => {
+      setUploadError('Unable to read that image. Please try another file.')
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleRemoveImage = () => {
+    setFormData((current) => ({ ...current, profileImageUrl: '' }))
+    setImagePreview('')
+    setUploadError('')
   }
 
   const handleSubmit = (event) => {
@@ -112,7 +150,25 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
 
       <div className="grid gap-6 md:grid-cols-[1.2fr_0.8fr]">
         <Field label="Username" name="username" value={formData.username} onChange={handleChange} placeholder="alexm" error={errors.username} required />
-        <Field label="Profile picture URL" name="profileImageUrl" value={formData.profileImageUrl} onChange={handleChange} placeholder="https://images.example.com/profile.jpg" error={errors.profileImageUrl} />
+        <div className="field-label">
+          <strong>Profile picture</strong>
+          <input type="file" accept="image/*" onChange={handleImageUpload} className="field-input file:mr-4 file:rounded-full file:border-0 file:bg-[linear-gradient(135deg,var(--color-brand-soft),var(--color-brand),var(--color-brand-strong))] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:cursor-pointer" />
+          <p className="mt-2 text-xs text-[var(--color-text-muted)]">Upload an image from your device. It will be saved with your profile and used across your workspace.</p>
+          {uploadError ? <p className="mt-2 text-sm text-[#b83a1c]">{uploadError}</p> : null}
+          {errors.profileImageUrl ? <p className="mt-2 text-sm text-[#b83a1c]">{errors.profileImageUrl}</p> : null}
+          {isImageSource(imagePreview) ? (
+            <div className="mt-3 flex items-center gap-3 rounded-[1.15rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] p-3">
+              <img src={imagePreview} alt="Profile preview" className="h-14 w-14 rounded-2xl object-cover" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-[var(--color-text)]">Image ready</p>
+                <p className="truncate text-xs text-[var(--color-text-soft)]">This image will be saved with your profile.</p>
+              </div>
+              <button type="button" onClick={handleRemoveImage} className="button-secondary px-3 py-2 text-xs">
+                Remove
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <Field label="Bio" name="bio" value={formData.bio} onChange={handleChange} placeholder="Software engineer focused on building reliable user experiences." error={errors.bio} type="textarea" rows={4} required />

@@ -1,8 +1,5 @@
 const { listProjects } = require('./projectService')
 
-let memorySkills = []
-let nextMemorySkillId = 1
-
 let prisma = null
 
 try {
@@ -13,6 +10,8 @@ try {
 } catch (error) {
   prisma = null
 }
+
+const { getLocalStore, updateLocalStore } = require('./localStore')
 
 const SKILL_LEVELS = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT']
 
@@ -183,7 +182,7 @@ async function listSkills(clerkUserId) {
 
   const projects = await listProjects(clerkUserId)
   return enrichMemorySkills(
-    memorySkills
+    getLocalStore().skills
       .filter((skill) => skill.ownerClerkUserId === clerkUserId)
       .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt)),
     projects,
@@ -211,7 +210,7 @@ async function getSkillById(clerkUserId, skillId) {
   }
 
   const projects = await listProjects(clerkUserId)
-  const skill = memorySkills.find((item) => item.id === id && item.ownerClerkUserId === clerkUserId)
+  const skill = getLocalStore().skills.find((item) => item.id === id && item.ownerClerkUserId === clerkUserId)
   if (!skill) {
     throw createServiceError(404, 'Skill not found.')
   }
@@ -245,22 +244,26 @@ async function createSkill(clerkUserId, payload) {
     return attachRelatedProjectIds(skill, skill.relatedProjects)
   }
 
-const projectList = await listProjects(clerkUserId)
+  const projectList = await listProjects(clerkUserId)
   const relatedProjects = enrichMemorySkills(
     relatedProjectIds.map((projectId) => ({ projectId })),
     projectList,
   )
 
+  const store = getLocalStore()
   const skill = {
-    id: nextMemorySkillId,
+    id: store.nextSkillId,
     ...data,
     relatedProjectIds,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
 
-  nextMemorySkillId += 1
-  memorySkills.unshift(skill)
+  updateLocalStore((current) => ({
+    ...current,
+    nextSkillId: current.nextSkillId + 1,
+    skills: [skill, ...current.skills],
+  }))
   return enrichMemorySkills([skill], projectList)[0]
 }
 
@@ -306,7 +309,7 @@ async function updateSkill(clerkUserId, skillId, payload) {
   }
 
   const projects = await listProjects(clerkUserId)
-  const existing = memorySkills.find((skill) => skill.id === id && skill.ownerClerkUserId === clerkUserId)
+  const existing = getLocalStore().skills.find((skill) => skill.id === id && skill.ownerClerkUserId === clerkUserId)
   if (!existing) {
     throw createServiceError(404, 'Skill not found.')
   }
@@ -318,7 +321,10 @@ async function updateSkill(clerkUserId, skillId, payload) {
     updatedAt: new Date(),
   }
 
-  memorySkills = memorySkills.map((skill) => (skill.id === id && skill.ownerClerkUserId === clerkUserId ? updatedSkill : skill))
+  updateLocalStore((current) => ({
+    ...current,
+    skills: current.skills.map((skill) => (skill.id === id && skill.ownerClerkUserId === clerkUserId ? updatedSkill : skill)),
+  }))
   return enrichMemorySkills([updatedSkill], projects)[0]
 }
 
@@ -345,12 +351,15 @@ async function deleteSkill(clerkUserId, skillId) {
     return null
   }
 
-  const existing = memorySkills.find((skill) => skill.id === id && skill.ownerClerkUserId === clerkUserId)
+  const existing = getLocalStore().skills.find((skill) => skill.id === id && skill.ownerClerkUserId === clerkUserId)
   if (!existing) {
     throw createServiceError(404, 'Skill not found.')
   }
 
-  memorySkills = memorySkills.filter((skill) => !(skill.id === id && skill.ownerClerkUserId === clerkUserId))
+  updateLocalStore((current) => ({
+    ...current,
+    skills: current.skills.filter((skill) => !(skill.id === id && skill.ownerClerkUserId === clerkUserId)),
+  }))
   return null
 }
 

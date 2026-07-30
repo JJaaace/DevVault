@@ -12,7 +12,7 @@ function BannerFallback() {
   )
 }
 
-export function ProjectCard({ project }) {
+export function ProjectCard({ project, readOnly = false }) {
   const statusMeta = getProjectStatusMeta(project.status)
   const techStack = project.techStack || []
 
@@ -94,9 +94,11 @@ export function ProjectCard({ project }) {
           >
             Live demo
           </a>
-          <Link to={`/projects/${project.id}/edit`} className="button-primary justify-center px-4 py-2 text-sm">
-            Edit
-          </Link>
+          {readOnly ? null : (
+            <Link to={`/projects/${project.id}/edit`} className="button-primary justify-center px-4 py-2 text-sm">
+              Edit
+            </Link>
+          )}
         </div>
       </div>
     </article>

@@ -1,6 +1,3 @@
-let memoryProjects = []
-let nextMemoryProjectId = 1
-
 let prisma = null
 
 try {
@@ -11,6 +8,8 @@ try {
 } catch (error) {
   prisma = null
 }
+
+const { getLocalStore, updateLocalStore } = require('./localStore')
 
 const PROJECT_STATUSES = ['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ARCHIVED']
 
@@ -125,7 +124,7 @@ function buildProjectPayload(payload, clerkUserId) {
 }
 
 function findMemoryProject(projectId, clerkUserId) {
-  return memoryProjects.find(
+  return getLocalStore().projects.find(
     (project) => project.id === projectId && project.ownerClerkUserId === clerkUserId,
   ) || null
 }
@@ -159,7 +158,7 @@ async function listProjects(clerkUserId) {
     })
   }
 
-  return memoryProjects
+  return getLocalStore().projects
     .filter((project) => project.ownerClerkUserId === clerkUserId)
     .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))
 }
@@ -202,15 +201,19 @@ async function createProject(clerkUserId, payload) {
     })
   }
 
+  const store = getLocalStore()
   const project = {
-    id: nextMemoryProjectId,
+    id: store.nextProjectId,
     ...data,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
 
-  nextMemoryProjectId += 1
-  memoryProjects.unshift(project)
+  updateLocalStore((current) => ({
+    ...current,
+    nextProjectId: current.nextProjectId + 1,
+    projects: [project, ...current.projects],
+  }))
   return project
 }
 
@@ -251,7 +254,10 @@ async function updateProject(clerkUserId, projectId, payload) {
     updatedAt: new Date(),
   }
 
-  memoryProjects = memoryProjects.map((project) => (project.id === id && project.ownerClerkUserId === clerkUserId ? updatedProject : project))
+  updateLocalStore((current) => ({
+    ...current,
+    projects: current.projects.map((project) => (project.id === id && project.ownerClerkUserId === clerkUserId ? updatedProject : project)),
+  }))
   return updatedProject
 }
 
@@ -279,7 +285,10 @@ async function deleteProject(clerkUserId, projectId) {
   }
 
   ensureProjectOwnership(findMemoryProject(id, clerkUserId), clerkUserId)
-  memoryProjects = memoryProjects.filter((project) => !(project.id === id && project.ownerClerkUserId === clerkUserId))
+  updateLocalStore((current) => ({
+    ...current,
+    projects: current.projects.filter((project) => !(project.id === id && project.ownerClerkUserId === clerkUserId)),
+  }))
   return null
 }
 
