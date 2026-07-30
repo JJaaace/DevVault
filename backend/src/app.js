@@ -5,6 +5,8 @@ const { clerkMiddleware } = require('@clerk/express')
 const healthRouter = require('./routes/health')
 const usersRouter = require('./routes/users')
 const profileRouter = require('./routes/profile')
+const projectsRouter = require('./routes/projects')
+const skillsRouter = require('./routes/skills')
 
 dotenv.config()
 
@@ -18,6 +20,8 @@ app.use(clerkMiddleware())
 app.use('/health', healthRouter)
 app.use('/api/users', usersRouter)
 app.use('/api/profile', profileRouter)
+app.use('/api/projects', projectsRouter)
+app.use('/api/skills', skillsRouter)
 
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to DevVault API' })

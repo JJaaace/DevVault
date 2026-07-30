@@ -1,0 +1,25 @@
+export const clerkAppearance = {
+  variables: {
+    colorPrimary: '#d96a16',
+    colorBackground: '#fffdf9',
+    colorText: '#2d241c',
+    colorInputBackground: '#fffdf9',
+    colorInputText: '#2d241c',
+    colorNeutral: '#6e5f53',
+    borderRadius: '18px',
+    spacingUnit: '0.9rem',
+  },
+  elements: {
+    card: 'surface-card surface-card--strong',
+    headerTitle: 'text-2xl font-semibold tracking-tight text-[var(--color-text)]',
+    headerSubtitle: 'text-sm text-[var(--color-text-soft)]',
+    socialButtonsBlockButton: 'button-secondary',
+    formButtonPrimary: 'button-primary',
+    formButtonReset: 'button-secondary',
+    formFieldInput: 'field-input',
+    formFieldLabel: 'text-sm font-medium text-[var(--color-text)]',
+    formFieldLabelRow: 'mb-2',
+    footerActionLink: 'text-[var(--color-brand-strong)] hover:text-[var(--color-brand-ink)]',
+    identityPreviewText: 'text-[var(--color-text)]',
+  },
+}

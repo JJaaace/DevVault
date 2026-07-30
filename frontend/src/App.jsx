@@ -1,75 +1,66 @@
-import { Link, Route, Routes } from 'react-router-dom'
+import { Link, Navigate, Route, Routes } from 'react-router-dom'
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react'
 import './App.css'
+import { Layout } from './components/Layout'
+import { WorkspaceNavigation } from './components/WorkspaceNavigation'
 import { LoginPage } from './pages/LoginPage'
 import { SignupPage } from './pages/SignupPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { EditProfilePage } from './pages/EditProfilePage'
+import { ProjectsPage } from './pages/ProjectsPage'
+import { ProjectFormPage } from './pages/ProjectFormPage'
+import { SkillsPage } from './pages/SkillsPage'
+import { CertificationsPage } from './pages/CertificationsPage'
+import { GoalsPage } from './pages/GoalsPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 function App() {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-900/80">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-cyan-400">
-              DevVault
-            </p>
-            <h1 className="text-2xl font-bold">Developer Growth Dashboard</h1>
+    <Layout>
+      <header className="sticky top-0 z-30 px-4 pt-4">
+        <div className="nav-shell nav-shell--workspace mx-auto max-w-6xl gap-4">
+          <div className="nav-brand">
+            <div className="nav-brand-mark text-sm font-semibold">DV</div>
+            <div>
+              <p className="nav-kicker">DevVault</p>
+              <h1 className="nav-title">Workspace</h1>
+            </div>
           </div>
-          <nav className="flex items-center gap-4 text-sm text-slate-300">
-            <Link to="/" className="transition hover:text-white">
-              Home
-            </Link>
-            <Link to="/about" className="transition hover:text-white">
-              About
-            </Link>
+
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+            <SignedIn>
+              <WorkspaceNavigation />
+              <div className="rounded-full border border-[rgba(126,89,45,0.14)] bg-white/70 p-1 shadow-sm">
+                <UserButton afterSignOutUrl="/" />
+              </div>
+            </SignedIn>
             <SignedOut>
-              <Link to="/login" className="transition hover:text-white">
+              <Link to="/login" className="button-secondary px-4 py-2 text-sm">
                 Sign in
               </Link>
-              <Link to="/signup" className="rounded-lg border border-cyan-500 px-3 py-2 text-cyan-300 transition hover:bg-cyan-500/10 hover:text-white">
+              <Link to="/signup" className="button-primary px-4 py-2 text-sm">
                 Sign up
               </Link>
             </SignedOut>
-            <SignedIn>
-              <Link to="/dashboard" className="transition hover:text-white">
-                Dashboard
-              </Link>
-              <Link to="/profile" className="transition hover:text-white">
-                Profile
-              </Link>
-              <UserButton afterSignOutUrl="/" />
-            </SignedIn>
-          </nav>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-12">
-        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl shadow-black/20">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.3em] text-cyan-400">
-            Phase 3 · Dashboard & Profile
-          </p>
-          <h2 className="mb-4 text-4xl font-semibold text-white">
-            A professional hub for your developer identity and growth.
-          </h2>
-          <p className="max-w-2xl text-lg text-slate-300">
-            Signed-in users now get a dashboard and a profile experience designed to feel polished and portfolio-ready.
-          </p>
-        </section>
-
+      <main className="page-shell page-shell--wide page-stack pb-14 pt-6 md:pt-8">
         <Routes>
           <Route
             path="/"
             element={
-              <section className="rounded-2xl border border-slate-800 bg-slate-900 p-8">
-                <h3 className="mb-3 text-2xl font-semibold text-white">Current milestone</h3>
-                <p className="text-slate-400">
-                  The app is now centered around a dashboard experience with profile creation and editing for authenticated users.
-                </p>
-              </section>
+              <>
+                <SignedIn>
+                  <Navigate to="/dashboard" replace />
+                </SignedIn>
+                <SignedOut>
+                  <Navigate to="/login" replace />
+                </SignedOut>
+              </>
             }
           />
           <Route path="/signup" element={<SignupPage />} />
@@ -83,10 +74,66 @@ function App() {
             }
           />
           <Route
+            path="/projects"
+            element={
+              <ProtectedRoute>
+                <ProjectsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/projects/new"
+            element={
+              <ProtectedRoute>
+                <ProjectFormPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/projects/:projectId/edit"
+            element={
+              <ProtectedRoute>
+                <ProjectFormPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/skills"
+            element={
+              <ProtectedRoute>
+                <SkillsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/profile"
             element={
               <ProtectedRoute>
                 <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/certifications"
+            element={
+              <ProtectedRoute>
+                <CertificationsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/goals"
+            element={
+              <ProtectedRoute>
+                <GoalsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
               </ProtectedRoute>
             }
           />
@@ -98,20 +145,9 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/about"
-            element={
-              <section className="rounded-2xl border border-slate-800 bg-slate-900 p-8">
-                <h3 className="mb-3 text-2xl font-semibold text-white">Why this structure?</h3>
-                <p className="text-slate-400">
-                  The dashboard and profile system are intentionally separated so the experience stays clear, scalable, and easy to extend later.
-                </p>
-              </section>
-            }
-          />
         </Routes>
       </main>
-    </div>
+    </Layout>
   )
 }
 

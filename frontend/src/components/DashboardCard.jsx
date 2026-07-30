@@ -1,15 +1,16 @@
-export function DashboardCard({ title, description, children, accent = 'cyan' }) {
+export function DashboardCard({ title, description, children, accent = 'amber' }) {
   const accentClass = {
-    cyan: 'border-cyan-500/25 bg-cyan-500/10 text-cyan-300',
-    slate: 'border-slate-700 bg-slate-900/70 text-slate-300',
+    amber: 'chip--accent',
+    stone: '',
+    glass: '',
   }[accent]
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-black/20">
-      <div className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] ${accentClass}`}>
+    <div className="widget-card hover-lift p-6">
+      <div className={`chip ${accentClass}`.trim()}>
         {title}
       </div>
-      {description ? <p className="mt-3 text-sm text-slate-400">{description}</p> : null}
+      {description ? <p className="mt-3 text-sm text-[var(--color-text-soft)]">{description}</p> : null}
       {children ? <div className="mt-4">{children}</div> : null}
     </div>
   )

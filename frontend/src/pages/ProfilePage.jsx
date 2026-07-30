@@ -122,8 +122,8 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-6 py-12 text-slate-100">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+    <div className="page-shell page-shell--wide page-stack pb-14">
+      <div className="flex flex-col gap-6">
         <SectionHeader
           eyebrow="Profile"
           title={profile ? 'Edit your developer profile' : 'Create your developer profile'}
@@ -131,21 +131,30 @@ export function ProfilePage() {
         />
 
         {loading ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-8 text-sm text-slate-400">Loading profile...</div>
+          <div className="widget-card p-8 text-sm text-[var(--color-text-soft)]">Loading profile...</div>
         ) : null}
 
         {error ? (
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">{error}</div>
-        ) : null}
-
-        {success ? (
-          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 text-sm text-cyan-300">
-            <div className="font-semibold">{success}</div>
-            <p className="mt-1 text-cyan-200">Your profile is now saved locally and will appear on your dashboard. The dashboard completion meter will update immediately.</p>
+          <div className="widget-card border border-[rgba(185,56,28,0.18)] bg-[rgba(255,242,236,0.9)] p-4 text-sm text-[#a83f1d]">
+            {error}
           </div>
         ) : null}
 
-        <ProfileForm profile={profile} onSubmit={handleSubmit} onCancel={() => navigate('/dashboard')} submitting={submitting} errors={errors} />
+        {success ? (
+          <div className="widget-card border border-[rgba(234,139,33,0.18)] bg-[rgba(255,247,233,0.92)] p-4 text-sm text-[var(--color-brand-ink)]">
+            <div className="font-semibold">{success}</div>
+            <p className="mt-1 text-[var(--color-text-soft)]">Your profile is now saved locally and will appear on your dashboard. The dashboard completion meter will update immediately.</p>
+          </div>
+        ) : null}
+
+        <ProfileForm
+          key={profile?.id || profile?.updatedAt || profile?.savedAt || profile?.username || 'new-profile'}
+          profile={profile}
+          onSubmit={handleSubmit}
+          onCancel={() => navigate('/dashboard')}
+          submitting={submitting}
+          errors={errors}
+        />
       </div>
     </div>
   )

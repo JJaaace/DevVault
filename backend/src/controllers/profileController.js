@@ -14,6 +14,9 @@ try {
 function validateProfilePayload(payload) {
   const errors = {}
 
+  const isHttpUrl = (value) => !value || /^https?:\/\//i.test(value)
+  const isInteger = (value) => value === undefined || value === null || value === '' || Number.isInteger(Number(value))
+
   if (!payload.firstName || payload.firstName.trim().length < 2) {
     errors.firstName = 'First name is required.'
   }
@@ -30,19 +33,64 @@ function validateProfilePayload(payload) {
     errors.bio = 'Bio must be at least 10 characters long.'
   }
 
-  if (payload.githubUrl && !/^https?:\/\//i.test(payload.githubUrl)) {
+  if (!isHttpUrl(payload.profileImageUrl)) {
+    errors.profileImageUrl = 'Profile image URL must start with http:// or https://.'
+  }
+
+  if (!isHttpUrl(payload.githubUrl)) {
     errors.githubUrl = 'GitHub URL must start with http:// or https://.'
   }
 
-  if (payload.linkedinUrl && !/^https?:\/\//i.test(payload.linkedinUrl)) {
+  if (!isHttpUrl(payload.linkedinUrl)) {
     errors.linkedinUrl = 'LinkedIn URL must start with http:// or https://.'
   }
 
-  if (payload.websiteUrl && !/^https?:\/\//i.test(payload.websiteUrl)) {
+  if (!isHttpUrl(payload.websiteUrl)) {
     errors.websiteUrl = 'Website URL must start with http:// or https://.'
   }
 
+  if (!isInteger(payload.graduationYear)) {
+    errors.graduationYear = 'Graduation year must be a number.'
+  }
+
+  if (!isInteger(payload.yearsCoding)) {
+    errors.yearsCoding = 'Years coding must be a number.'
+  }
+
   return errors
+}
+
+function normalizeText(value) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
+function normalizeList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeText(item)).filter(Boolean)
+  }
+
+  if (typeof value !== 'string') {
+    return []
+  }
+
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function normalizeInteger(value) {
+  if (value === '' || value === null || value === undefined) {
+    return null
+  }
+
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? parsed : null
 }
 
 function buildProfilePayload(payload, clerkUserId) {
@@ -52,13 +100,20 @@ function buildProfilePayload(payload, clerkUserId) {
     firstName: payload.firstName.trim(),
     lastName: payload.lastName.trim(),
     bio: payload.bio.trim(),
-    university: payload.university?.trim() || null,
-    graduationYear: payload.graduationYear ? Number(payload.graduationYear) : null,
-    country: payload.country?.trim() || null,
-    state: payload.state?.trim() || null,
-    githubUrl: payload.githubUrl?.trim() || null,
-    linkedinUrl: payload.linkedinUrl?.trim() || null,
-    websiteUrl: payload.websiteUrl?.trim() || null,
+    profileImageUrl: normalizeText(payload.profileImageUrl || payload.profileImage),
+    school: normalizeText(payload.school || payload.university),
+    graduationYear: normalizeInteger(payload.graduationYear),
+    major: normalizeText(payload.major),
+    location: normalizeText(payload.location || [payload.city, payload.state, payload.country].filter(Boolean).join(', ')),
+    dreamCompanies: normalizeList(payload.dreamCompanies),
+    currentRole: normalizeText(payload.currentRole),
+    favoriteLanguage: normalizeText(payload.favoriteLanguage),
+    favoriteFramework: normalizeText(payload.favoriteFramework),
+    yearsCoding: normalizeInteger(payload.yearsCoding),
+    interests: normalizeList(payload.interests),
+    githubUrl: normalizeText(payload.githubUrl),
+    linkedinUrl: normalizeText(payload.linkedinUrl),
+    websiteUrl: normalizeText(payload.websiteUrl),
   }
 }
 

@@ -17,7 +17,7 @@ export function SocialLinks({ profile }) {
           href={link.href}
           target="_blank"
           rel="noreferrer"
-          className="rounded-full border border-slate-700 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-cyan-500 hover:text-cyan-300"
+          className="chip chip--accent transition hover:-translate-y-0.5 hover:shadow-md"
         >
           {link.icon} {link.label}
         </a>

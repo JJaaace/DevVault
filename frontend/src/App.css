@@ -1,4 +1,26 @@
-.app-shell {
-  min-height: 100vh;
-  background: linear-gradient(135deg, #020617 0%, #111827 100%);
+.app-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.16), transparent 70%);
+  opacity: 0.3;
+}
+
+.app-shell::after {
+  content: '';
+  position: absolute;
+  right: -6rem;
+  top: 18rem;
+  width: 20rem;
+  height: 20rem;
+  pointer-events: none;
+  border-radius: 999px;
+  background: radial-gradient(circle at center, rgba(234, 139, 33, 0.22), transparent 68%);
+  filter: blur(10px);
+  opacity: 0.5;
 }

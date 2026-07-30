@@ -1,60 +1,81 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
-const defaultValues = {
-  firstName: '',
-  lastName: '',
-  username: '',
-  bio: '',
-  university: '',
-  graduationYear: '',
-  country: '',
-  state: '',
-  githubUrl: '',
-  linkedinUrl: '',
-  websiteUrl: '',
+function listToText(value) {
+  if (!value) {
+    return ''
+  }
+
+  return Array.isArray(value) ? value.join('\n') : String(value)
 }
 
-const countryOptions = [
-  { value: 'United States', label: 'United States' },
-  { value: 'Canada', label: 'Canada' },
-  { value: 'United Kingdom', label: 'United Kingdom' },
-  { value: 'India', label: 'India' },
-  { value: 'Other', label: 'Other' },
-]
+function normalizeListInput(value) {
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
 
-const stateOptions = {
-  'United States': [
-    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
-    'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
-    'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri',
-    'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico', 'New York',
-    'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
-    'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
-    'West Virginia', 'Wisconsin', 'Wyoming'
-  ],
-  Canada: ['Ontario', 'British Columbia', 'Alberta', 'Quebec', 'Manitoba'],
-  'United Kingdom': ['England', 'Scotland', 'Wales', 'Northern Ireland'],
-  India: ['Delhi', 'Mumbai', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata'],
+function normalizeNumberInput(value) {
+  if (!value) {
+    return null
+  }
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function fieldClass(error) {
+  return `field-input ${error ? 'border-[#b83a1c] ring-2 ring-[rgba(185,56,28,0.12)]' : ''}`.trim()
+}
+
+function textareaClass(error) {
+  return `field-textarea ${error ? 'border-[#b83a1c] ring-2 ring-[rgba(185,56,28,0.12)]' : ''}`.trim()
+}
+
+function Field({ label, name, value, onChange, placeholder, error, type = 'text', rows, min, helpText, required = false }) {
+  const inputProps = {
+    name,
+    value,
+    onChange,
+    placeholder,
+    required,
+  }
+
+  return (
+    <label className="field-label">
+      <strong>{label}</strong>
+      {type === 'textarea' ? (
+        <textarea {...inputProps} rows={rows || 4} className={textareaClass(error)} />
+      ) : (
+        <input {...inputProps} type={type} min={min} className={fieldClass(error)} />
+      )}
+      {helpText ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">{helpText}</p> : null}
+      {error ? <p className="mt-2 text-sm text-[#b83a1c]">{error}</p> : null}
+    </label>
+  )
 }
 
 export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, errors = {} }) {
-  const [formData, setFormData] = useState(defaultValues)
-
-  useEffect(() => {
-    setFormData({
-      firstName: profile?.firstName ?? '',
-      lastName: profile?.lastName ?? '',
-      username: profile?.username ?? '',
-      bio: profile?.bio ?? '',
-      university: profile?.university ?? '',
-      graduationYear: profile?.graduationYear ?? '',
-      country: profile?.country ?? '',
-      state: profile?.state ?? '',
-      githubUrl: profile?.githubUrl ?? '',
-      linkedinUrl: profile?.linkedinUrl ?? '',
-      websiteUrl: profile?.websiteUrl ?? '',
-    })
-  }, [profile])
+  const [formData, setFormData] = useState(() => ({
+    firstName: profile?.firstName ?? '',
+    lastName: profile?.lastName ?? '',
+    username: profile?.username ?? '',
+    bio: profile?.bio ?? '',
+    profileImageUrl: profile?.profileImageUrl ?? profile?.profileImage ?? '',
+    school: profile?.school ?? profile?.university ?? '',
+    graduationYear: profile?.graduationYear ?? '',
+    major: profile?.major ?? '',
+    location: profile?.location ?? [profile?.state, profile?.country].filter(Boolean).join(', '),
+    dreamCompanies: listToText(profile?.dreamCompanies),
+    currentRole: profile?.currentRole ?? '',
+    favoriteLanguage: profile?.favoriteLanguage ?? '',
+    favoriteFramework: profile?.favoriteFramework ?? '',
+    yearsCoding: profile?.yearsCoding ?? '',
+    interests: listToText(profile?.interests),
+    githubUrl: profile?.githubUrl ?? '',
+    linkedinUrl: profile?.linkedinUrl ?? '',
+    websiteUrl: profile?.websiteUrl ?? '',
+  }))
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -63,183 +84,92 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
 
   const handleSubmit = (event) => {
     event.preventDefault()
-    onSubmit(formData)
+    onSubmit({
+      ...formData,
+      profileImageUrl: formData.profileImageUrl.trim(),
+      school: formData.school.trim(),
+      major: formData.major.trim(),
+      location: formData.location.trim(),
+      dreamCompanies: normalizeListInput(formData.dreamCompanies),
+      currentRole: formData.currentRole.trim(),
+      favoriteLanguage: formData.favoriteLanguage.trim(),
+      favoriteFramework: formData.favoriteFramework.trim(),
+      interests: normalizeListInput(formData.interests),
+      githubUrl: formData.githubUrl.trim(),
+      linkedinUrl: formData.linkedinUrl.trim(),
+      websiteUrl: formData.websiteUrl.trim(),
+      graduationYear: normalizeNumberInput(formData.graduationYear),
+      yearsCoding: normalizeNumberInput(formData.yearsCoding),
+    })
   }
 
-  const availableStates = stateOptions[formData.country] || []
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-black/20">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">First name</span>
-          <input
-            name="firstName"
-            value={formData.firstName}
-            onChange={handleChange}
-            required
-            className={`w-full rounded-lg border bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500 ${errors.firstName ? 'border-red-500' : 'border-slate-700'}`}
-            placeholder="Alex"
-          />
-          {errors.firstName ? <p className="mt-2 text-sm text-red-400">{errors.firstName}</p> : null}
-        </label>
-
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">Last name</span>
-          <input
-            name="lastName"
-            value={formData.lastName}
-            onChange={handleChange}
-            required
-            className={`w-full rounded-lg border bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500 ${errors.lastName ? 'border-red-500' : 'border-slate-700'}`}
-            placeholder="Morgan"
-          />
-          {errors.lastName ? <p className="mt-2 text-sm text-red-400">{errors.lastName}</p> : null}
-        </label>
+    <form onSubmit={handleSubmit} className="surface-card surface-card--strong space-y-6 px-6 py-6 md:px-8 md:py-8">
+      <div className="grid gap-6 md:grid-cols-2">
+        <Field label="First name" name="firstName" value={formData.firstName} onChange={handleChange} placeholder="Alex" error={errors.firstName} required />
+        <Field label="Last name" name="lastName" value={formData.lastName} onChange={handleChange} placeholder="Morgan" error={errors.lastName} required />
       </div>
 
-      <label className="block text-sm text-slate-300">
-        <span className="mb-2 block font-medium text-slate-100">Username</span>
-        <input
-          name="username"
-          value={formData.username}
+      <div className="grid gap-6 md:grid-cols-[1.2fr_0.8fr]">
+        <Field label="Username" name="username" value={formData.username} onChange={handleChange} placeholder="alexm" error={errors.username} required />
+        <Field label="Profile picture URL" name="profileImageUrl" value={formData.profileImageUrl} onChange={handleChange} placeholder="https://images.example.com/profile.jpg" error={errors.profileImageUrl} />
+      </div>
+
+      <Field label="Bio" name="bio" value={formData.bio} onChange={handleChange} placeholder="Software engineer focused on building reliable user experiences." error={errors.bio} type="textarea" rows={4} required />
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Field label="School" name="school" value={formData.school} onChange={handleChange} placeholder="University of Washington" />
+        <Field label="Major" name="major" value={formData.major} onChange={handleChange} placeholder="Computer Science" />
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-3">
+        <Field label="Graduation year" name="graduationYear" value={formData.graduationYear} onChange={handleChange} placeholder="2025" type="number" />
+        <Field label="Years coding" name="yearsCoding" value={formData.yearsCoding} onChange={handleChange} placeholder="5" type="number" min="0" error={errors.yearsCoding} />
+        <Field label="Location" name="location" value={formData.location} onChange={handleChange} placeholder="Seattle, WA, USA" />
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-3">
+        <Field label="Current role" name="currentRole" value={formData.currentRole} onChange={handleChange} placeholder="Frontend engineer" />
+        <Field label="Favorite language" name="favoriteLanguage" value={formData.favoriteLanguage} onChange={handleChange} placeholder="TypeScript" />
+        <Field label="Favorite framework" name="favoriteFramework" value={formData.favoriteFramework} onChange={handleChange} placeholder="React" />
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Field
+          label="Dream companies"
+          name="dreamCompanies"
+          value={formData.dreamCompanies}
           onChange={handleChange}
-          required
-          className={`w-full rounded-lg border bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500 ${errors.username ? 'border-red-500' : 'border-slate-700'}`}
-          placeholder="alexm"
+          placeholder="Google\nStripe\nFigma"
+          type="textarea"
+          rows={4}
+          helpText="Separate entries with commas or new lines."
         />
-        {errors.username ? <p className="mt-2 text-sm text-red-400">{errors.username}</p> : null}
-      </label>
-
-      <label className="block text-sm text-slate-300">
-        <span className="mb-2 block font-medium text-slate-100">Bio</span>
-        <textarea
-          name="bio"
-          rows="4"
-          value={formData.bio}
+        <Field
+          label="Interests"
+          name="interests"
+          value={formData.interests}
           onChange={handleChange}
-          required
-          className={`w-full rounded-lg border bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500 ${errors.bio ? 'border-red-500' : 'border-slate-700'}`}
-          placeholder="Software engineer focused on building reliable user experiences."
+          placeholder="AI\nDesign systems\nOpen source"
+          type="textarea"
+          rows={4}
+          helpText="Separate entries with commas or new lines."
         />
-        {errors.bio ? <p className="mt-2 text-sm text-red-400">{errors.bio}</p> : null}
-      </label>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">Country</span>
-          <select
-            name="country"
-            value={formData.country}
-            onChange={handleChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500"
-          >
-            <option value="">Select a country</option>
-            {countryOptions.map((country) => (
-              <option key={country.value} value={country.value}>
-                {country.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">State / Province</span>
-          <select
-            name="state"
-            value={formData.state}
-            onChange={handleChange}
-            disabled={!availableStates.length}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <option value="">{availableStates.length ? 'Select a state' : 'Select a country first'}</option>
-            {availableStates.map((stateName) => (
-              <option key={stateName} value={stateName}>
-                {stateName}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">University</span>
-          <input
-            name="university"
-            value={formData.university}
-            onChange={handleChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500"
-            placeholder="University of Washington"
-          />
-        </label>
-
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">Graduation year</span>
-          <input
-            name="graduationYear"
-            type="number"
-            value={formData.graduationYear}
-            onChange={handleChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500"
-            placeholder="2025"
-          />
-        </label>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">GitHub URL</span>
-          <input
-            name="githubUrl"
-            value={formData.githubUrl}
-            onChange={handleChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500"
-            placeholder="https://github.com/username"
-          />
-          {errors.githubUrl ? <p className="mt-2 text-sm text-red-400">{errors.githubUrl}</p> : null}
-        </label>
-
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">LinkedIn URL</span>
-          <input
-            name="linkedinUrl"
-            value={formData.linkedinUrl}
-            onChange={handleChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500"
-            placeholder="https://linkedin.com/in/username"
-          />
-          {errors.linkedinUrl ? <p className="mt-2 text-sm text-red-400">{errors.linkedinUrl}</p> : null}
-        </label>
-
-        <label className="block text-sm text-slate-300">
-          <span className="mb-2 block font-medium text-slate-100">Website URL</span>
-          <input
-            name="websiteUrl"
-            value={formData.websiteUrl}
-            onChange={handleChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500"
-            placeholder="https://your-site.com"
-          />
-          {errors.websiteUrl ? <p className="mt-2 text-sm text-red-400">{errors.websiteUrl}</p> : null}
-        </label>
+      <div className="grid gap-6 md:grid-cols-3">
+        <Field label="GitHub URL" name="githubUrl" value={formData.githubUrl} onChange={handleChange} placeholder="https://github.com/username" error={errors.githubUrl} />
+        <Field label="LinkedIn URL" name="linkedinUrl" value={formData.linkedinUrl} onChange={handleChange} placeholder="https://linkedin.com/in/username" error={errors.linkedinUrl} />
+        <Field label="Website URL" name="websiteUrl" value={formData.websiteUrl} onChange={handleChange} placeholder="https://your-site.com" error={errors.websiteUrl} />
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
-          >
+          <button type="button" onClick={onCancel} className="button-secondary px-4 py-2 text-sm">
             Cancel
           </button>
         ) : null}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <button type="submit" disabled={submitting} className="button-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
           {submitting ? 'Saving...' : 'Save profile'}
         </button>
       </div>
