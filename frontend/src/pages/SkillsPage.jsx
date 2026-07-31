@@ -1,5 +1,6 @@
 import { useAuth } from '@clerk/clerk-react'
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { DashboardCard } from '../components/DashboardCard'
 import { SkillCard } from '../components/SkillCard'
 import { SkillFormModal } from '../components/SkillFormModal'
@@ -20,7 +21,6 @@ export function SkillsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState(null)
   const [submitting, setSubmitting] = useState(false)
-  const [modalError, setModalError] = useState('')
   const [modalErrors, setModalErrors] = useState({})
 
   useEffect(() => {
@@ -84,14 +84,12 @@ export function SkillsPage() {
 
   const openCreateModal = () => {
     setEditingSkill(null)
-    setModalError('')
     setModalErrors({})
     setIsModalOpen(true)
   }
 
   const openEditModal = (skill) => {
     setEditingSkill(skill)
-    setModalError('')
     setModalErrors({})
     setIsModalOpen(true)
   }
@@ -103,7 +101,6 @@ export function SkillsPage() {
 
     setIsModalOpen(false)
     setEditingSkill(null)
-    setModalError('')
     setModalErrors({})
   }
 
@@ -126,7 +123,6 @@ export function SkillsPage() {
 
   const handleSubmit = async (formData) => {
     setSubmitting(true)
-    setModalError('')
     setModalErrors({})
 
     try {
@@ -138,13 +134,14 @@ export function SkillsPage() {
 
       await refreshSkills()
       closeModal()
+      toast.success(editingSkill ? 'Skill updated successfully.' : 'Skill created successfully.')
     } catch (err) {
       const parsed = parseErrorPayload(err.message || '')
       if (parsed.errors) {
         setModalErrors(parsed.errors)
-        setModalError('Please fix the highlighted fields and try again.')
+        toast.error('Please fix the highlighted fields and try again.')
       } else {
-        setModalError(parsed.message || 'Unable to save skill.')
+        toast.error(parsed.message || 'Unable to save skill.')
       }
     } finally {
       setSubmitting(false)
@@ -152,17 +149,33 @@ export function SkillsPage() {
   }
 
   const handleDelete = async (skill) => {
-    const confirmed = window.confirm(`Delete ${skill.name}?`)
-    if (!confirmed) {
-      return
-    }
-
-    try {
-      await deleteSkill(skill.id, getToken)
-      await refreshSkills()
-    } catch (err) {
-      setError(err.message || 'Unable to delete skill.')
-    }
+    toast.custom((id) => (
+      <div className="max-w-sm rounded-[1.15rem] border border-[rgba(126,89,45,0.16)] bg-white px-4 py-4 shadow-[0_24px_60px_rgba(37,24,12,0.14)]">
+        <p className="text-sm font-semibold text-[var(--color-text)]">Delete {skill.name}?</p>
+        <p className="mt-1 text-sm text-[var(--color-text-soft)]">This removes the skill from DevVault permanently.</p>
+        <div className="mt-4 flex gap-3">
+          <button
+            type="button"
+            onClick={async () => {
+              toast.dismiss(id)
+              try {
+                await deleteSkill(skill.id, getToken)
+                await refreshSkills()
+                toast.success(`${skill.name} deleted.`)
+              } catch (err) {
+                toast.error(err.message || 'Unable to delete skill.')
+              }
+            }}
+            className="button-primary px-3 py-2 text-sm"
+          >
+            Delete
+          </button>
+          <button type="button" onClick={() => toast.dismiss(id)} className="button-secondary px-3 py-2 text-sm">
+            Cancel
+          </button>
+        </div>
+      </div>
+    ), { duration: Infinity })
   }
 
   return (
@@ -262,7 +275,6 @@ export function SkillsPage() {
           onClose={closeModal}
           submitting={submitting}
           errors={modalErrors}
-          errorMessage={modalError}
         />
       ) : null}
     </div>

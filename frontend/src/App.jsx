@@ -15,6 +15,7 @@ import { SkillsPage } from './pages/SkillsPage'
 import { CertificationsPage } from './pages/CertificationsPage'
 import { GoalsPage } from './pages/GoalsPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ResumePage } from './pages/ResumePage'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 function App() {
@@ -67,6 +68,7 @@ function App() {
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/portfolio/:username" element={<PortfolioPage />} />
+          <Route path="/resume/:username" element={<ResumePage />} />
           <Route
             path="/dashboard"
             element={

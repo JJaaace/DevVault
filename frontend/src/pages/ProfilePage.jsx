@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
+import { toast } from 'sonner'
 import { authenticatedRequest } from '../lib/api'
 import { ProfileForm } from '../components/ProfileForm'
 import { SectionHeader } from '../components/SectionHeader'
 import { readStoredProfile, saveStoredProfile } from '../lib/profileStorage'
+import { buildGitHubProfilePayload, extractGitHubUsername, fetchGitHubProfile } from '../lib/githubApi'
 
 export function ProfilePage() {
   const navigate = useNavigate()
@@ -13,9 +15,8 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [errors, setErrors] = useState({})
-  const [copyState, setCopyState] = useState('')
+  const [syncingGitHub, setSyncingGitHub] = useState(false)
 
   useEffect(() => {
     async function loadProfile() {
@@ -77,6 +78,44 @@ export function ProfilePage() {
     ? `${window.location.origin}/portfolio/${profile.username}`
     : ''
 
+  const resumeUrl = profile?.username && typeof window !== 'undefined'
+    ? `${window.location.origin}/resume/${profile.username}?print=1`
+    : ''
+
+  const handleSyncFromGitHub = async () => {
+    if (!profile) {
+      return
+    }
+
+    const githubUsername = extractGitHubUsername(profile.githubUrl)
+    if (!githubUsername) {
+      toast.error('Add your GitHub URL first so DevVault knows which account to sync.')
+      return
+    }
+
+    setSyncingGitHub(true)
+    setError('')
+    const loadingToast = toast.loading('Syncing your GitHub profile...')
+
+    try {
+      const githubUser = await fetchGitHubProfile(githubUsername)
+      const payload = buildGitHubProfilePayload(profile, githubUser)
+      const method = profile ? 'PUT' : 'POST'
+      const savedProfile = await authenticatedRequest('/api/profile', {
+        method,
+        body: JSON.stringify(payload),
+      }, getToken)
+
+      setProfile(savedProfile)
+      saveStoredProfile(savedProfile)
+      toast.success('GitHub profile synced into DevVault.', { id: loadingToast })
+    } catch (err) {
+      toast.error(err.message || 'Unable to sync from GitHub.', { id: loadingToast })
+    } finally {
+      setSyncingGitHub(false)
+    }
+  }
+
   const handleCopyPortfolioLink = async () => {
     if (!publicPortfolioUrl || !navigator.clipboard) {
       return
@@ -84,17 +123,15 @@ export function ProfilePage() {
 
     try {
       await navigator.clipboard.writeText(publicPortfolioUrl)
-      setCopyState('Portfolio link copied.')
-      window.setTimeout(() => setCopyState(''), 2500)
+      toast.success('Portfolio link copied.')
     } catch {
-      setCopyState('Unable to copy automatically. Use the link below.')
+      toast.error('Unable to copy automatically. Use the link below.')
     }
   }
 
   const handleSubmit = async (formData) => {
     setSubmitting(true)
     setError('')
-    setSuccess('')
     setErrors({})
 
     const optimisticProfile = {
@@ -109,7 +146,7 @@ export function ProfilePage() {
       if (!isLoaded || !isSignedIn) {
         const fallbackProfile = saveStoredProfile(optimisticProfile)
         setProfile(fallbackProfile)
-        setSuccess('Profile saved locally. Your dashboard will show it as soon as you return.')
+        toast.success('Profile saved locally. Your dashboard will show it as soon as you return.')
         return
       }
 
@@ -118,7 +155,7 @@ export function ProfilePage() {
       const savedProfile = response || optimisticProfile
       setProfile(savedProfile)
       saveStoredProfile(savedProfile)
-      setSuccess(profile ? 'Profile updated successfully.' : 'Profile created successfully.')
+      toast.success(profile ? 'Profile updated successfully.' : 'Profile created successfully.')
       setTimeout(() => navigate('/dashboard'), 900)
     } catch (err) {
       const message = err?.message || ''
@@ -128,12 +165,12 @@ export function ProfilePage() {
       setProfile(fallbackProfile)
 
       if (message.includes('403') || message.includes('Unauthorized') || message.includes('auth')) {
-        setSuccess('Profile saved locally for now. Your dashboard will show it right away.')
+        toast.success('Profile saved locally for now. Your dashboard will show it right away.')
       } else if (parsed.errors) {
         setErrors(parsed.errors)
-        setError('Please fix the highlighted fields and try again.')
+        toast.error('Please fix the highlighted fields and try again.')
       } else {
-        setSuccess('Profile saved locally for now. Your dashboard will show it right away.')
+        toast.success('Profile saved locally for now. Your dashboard will show it right away.')
       }
     } finally {
       setSubmitting(false)
@@ -159,13 +196,6 @@ export function ProfilePage() {
           </div>
         ) : null}
 
-        {success ? (
-          <div className="widget-card border border-[rgba(234,139,33,0.18)] bg-[rgba(255,247,233,0.92)] p-4 text-sm text-[var(--color-brand-ink)]">
-            <div className="font-semibold">{success}</div>
-            <p className="mt-1 text-[var(--color-text-soft)]">Your profile is now saved locally and will appear on your dashboard. The dashboard completion meter will update immediately.</p>
-          </div>
-        ) : null}
-
         {profile ? (
           <div className="widget-card widget-card--accent p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -179,6 +209,12 @@ export function ProfilePage() {
                 <Link to={`/portfolio/${profile.username}`} className="button-primary px-4 py-2 text-sm" target="_blank" rel="noreferrer">
                   View portfolio
                 </Link>
+                <Link to={`/resume/${profile.username}?print=1`} target="_blank" rel="noreferrer" className="button-secondary px-4 py-2 text-sm">
+                  Print / Save PDF
+                </Link>
+                <button type="button" onClick={handleSyncFromGitHub} disabled={syncingGitHub} className="button-secondary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+                  {syncingGitHub ? 'Syncing GitHub...' : 'Sync from GitHub'}
+                </button>
                 <button type="button" onClick={handleCopyPortfolioLink} className="button-secondary px-4 py-2 text-sm">
                   Copy link
                 </button>
@@ -189,7 +225,8 @@ export function ProfilePage() {
               {publicPortfolioUrl}
             </div>
 
-            {copyState ? <p className="mt-3 text-sm text-[var(--color-brand-ink)]">{copyState}</p> : null}
+            {resumeUrl ? <div className="mt-3 rounded-[1.1rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-xs text-[var(--color-text-muted)]">Resume preview: {resumeUrl}</div> : null}
+
           </div>
         ) : null}
 

@@ -1,6 +1,7 @@
 import { useAuth } from '@clerk/clerk-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { ProjectForm } from '../components/ProjectForm'
 import { SectionHeader } from '../components/SectionHeader'
 import { createProject, fetchProject, updateProject } from '../lib/projectsApi'
@@ -66,14 +67,15 @@ export function ProjectFormPage() {
         await createProject(formData, getToken)
       }
 
+      toast.success(isEditing ? 'Project updated successfully.' : 'Project created successfully.')
       navigate('/projects')
     } catch (err) {
       const parsed = parseErrorPayload(err.message || '')
       if (parsed.errors) {
         setErrors(parsed.errors)
-        setError('Please fix the highlighted fields and try again.')
+        toast.error('Please fix the highlighted fields and try again.')
       } else {
-        setError(parsed.message || 'Unable to save project.')
+        toast.error(parsed.message || 'Unable to save project.')
       }
     } finally {
       setSubmitting(false)

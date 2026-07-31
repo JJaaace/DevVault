@@ -394,6 +394,31 @@ export function buildHeroProgress(profile, projects = [], skills = []) {
   ]
 }
 
+export function buildOnboardingChecklist(profile, projects = [], skills = []) {
+  const profileCompletion = calculateProfileCompletion(profile).percentage
+
+  return [
+    {
+      label: 'Complete your profile',
+      href: profile ? '/profile/edit' : '/profile',
+      done: profileCompletion >= 100,
+      note: profileCompletion >= 100 ? 'Profile complete' : 'Fill in the missing details',
+    },
+    {
+      label: 'Add your first project',
+      href: '/projects/new',
+      done: projects.length > 0,
+      note: projects.length > 0 ? `${projects.length} project${projects.length === 1 ? '' : 's'} tracked` : 'Showcase work you have shipped',
+    },
+    {
+      label: 'Add your first skill',
+      href: '/skills',
+      done: skills.length > 0,
+      note: skills.length > 0 ? `${skills.length} skill${skills.length === 1 ? '' : 's'} tracked` : 'Start your growth map',
+    },
+  ]
+}
+
 export function buildProjectProgressSummary(projects = []) {
   const activeProjects = projects.filter((project) => project.status !== 'ARCHIVED')
   const topProjects = [...activeProjects].sort((left, right) => right.completionPercentage - left.completionPercentage).slice(0, 3)

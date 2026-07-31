@@ -16,6 +16,7 @@ import {
   buildHeroQuickStats,
   buildInternshipTracker,
   buildLearningGoals,
+  buildOnboardingChecklist,
   buildProjectProgressSummary,
   buildRecentActivity,
   buildSkillOverviewSummary,
@@ -106,6 +107,7 @@ export function DashboardPage() {
   const heroProgress = buildHeroProgress(profile, projects, skills)
   const heroQuickStats = buildHeroQuickStats(profile, projects, skills, activityEntries)
   const heroQuickActions = buildHeroQuickActions(profile, projects, skills, heroDeadline)
+  const onboardingChecklist = buildOnboardingChecklist(profile, projects, skills)
 
   return (
     <div className="page-shell page-stack gap-4 pb-12">
@@ -259,6 +261,30 @@ export function DashboardPage() {
 
         <div className="flex min-w-0 flex-col gap-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+            <WorkspaceWidget
+              eyebrow="Onboarding"
+              title="Workspace checklist"
+              description="A short path to get your workspace ready for recruiting and sharing."
+            >
+              <div className="space-y-3">
+                {onboardingChecklist.map((step) => (
+                  <Link
+                    key={step.label}
+                    to={step.href}
+                    className="flex items-center justify-between gap-3 rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3 transition hover:-translate-y-0.5 hover:border-[rgba(234,139,33,0.2)] hover:bg-white"
+                  >
+                    <div>
+                      <p className="font-medium text-[var(--color-text)]">{step.label}</p>
+                      <p className="text-xs text-[var(--color-text-soft)]">{step.note}</p>
+                    </div>
+                    <span className={`chip ${step.done ? 'chip--accent' : ''}`.trim()}>
+                      {step.done ? 'Done' : 'Next'}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </WorkspaceWidget>
+
             <WorkspaceWidget
               eyebrow="Career"
               title="Certifications"

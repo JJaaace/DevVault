@@ -1,31 +1,84 @@
 import { useAuth } from '@clerk/clerk-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { toast } from 'sonner'
 import { DashboardCard } from '../components/DashboardCard'
 import { ProjectCard } from '../components/ProjectCard'
 import { ProjectsEmptyState } from '../components/ProjectsEmptyState'
 import { fetchProjects } from '../lib/projectsApi'
+import { authenticatedRequest } from '../lib/api'
+import { createProject } from '../lib/projectsApi'
+import { buildGitHubProjectDrafts, extractGitHubUsername, fetchGitHubRepos } from '../lib/githubApi'
 
 export function ProjectsPage() {
   const { getToken } = useAuth()
   const [projects, setProjects] = useState([])
+  const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [syncingGitHub, setSyncingGitHub] = useState(false)
 
   useEffect(() => {
     async function loadProjects() {
-      try {
-        const data = await fetchProjects(getToken)
-        setProjects(Array.isArray(data) ? data : [])
-      } catch (err) {
-        setError(err.message || 'Unable to load projects.')
-      } finally {
-        setLoading(false)
+      const [projectData, profileData] = await Promise.allSettled([
+        fetchProjects(getToken),
+        authenticatedRequest('/api/profile', {}, getToken),
+      ])
+
+      const messages = []
+
+      if (projectData.status === 'fulfilled') {
+        setProjects(Array.isArray(projectData.value) ? projectData.value : [])
+      } else {
+        messages.push(projectData.reason?.message || 'Unable to load projects.')
       }
+
+      if (profileData.status === 'fulfilled') {
+        setProfile(profileData.value || null)
+      } else {
+        messages.push(profileData.reason?.message || 'Unable to load profile.')
+      }
+
+      setError(messages[0] || '')
+      setLoading(false)
     }
 
-    loadProjects()
+    loadProjects().catch((err) => {
+      setError(err.message || 'Unable to load projects.')
+      setLoading(false)
+    })
   }, [getToken])
+
+  const githubUsername = extractGitHubUsername(profile?.githubUrl)
+
+  const handleSyncFromGitHub = async () => {
+    if (!githubUsername) {
+      toast.error('Add your GitHub URL to your profile first.')
+      return
+    }
+
+    setSyncingGitHub(true)
+    const loadingToast = toast.loading('Importing GitHub repositories...')
+
+    try {
+      const repos = await fetchGitHubRepos(githubUsername)
+      const drafts = buildGitHubProjectDrafts(repos).slice(0, 6)
+      const existingUrls = new Set(projects.map((project) => project.githubUrl).filter(Boolean))
+      const newDrafts = drafts.filter((draft) => !existingUrls.has(draft.githubUrl))
+
+      for (const draft of newDrafts) {
+        await createProject(draft, getToken)
+      }
+
+      const refreshedProjects = await fetchProjects(getToken)
+      setProjects(Array.isArray(refreshedProjects) ? refreshedProjects : [])
+      toast.success(newDrafts.length ? `Imported ${newDrafts.length} GitHub repo${newDrafts.length === 1 ? '' : 's'}.` : 'No new GitHub repos to import.', { id: loadingToast })
+    } catch (err) {
+      toast.error(err.message || 'Unable to sync GitHub repos.', { id: loadingToast })
+    } finally {
+      setSyncingGitHub(false)
+    }
+  }
 
   return (
     <div className="page-shell page-shell--wide page-stack pb-14">
@@ -38,10 +91,21 @@ export function ProjectsPage() {
               Keep your work ready for recruiters with clean status tracking, design-forward cards, and a single source of truth for every launch.
             </p>
           </div>
-          <Link to="/projects/new" className="button-primary px-5 py-3 text-sm md:text-base">
-            New Project
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link to="/projects/new" className="button-primary px-5 py-3 text-sm md:text-base">
+              New Project
+            </Link>
+            <button
+              type="button"
+              onClick={handleSyncFromGitHub}
+              disabled={syncingGitHub || !githubUsername}
+              className="button-secondary px-5 py-3 text-sm md:text-base disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {syncingGitHub ? 'Syncing GitHub...' : 'Sync GitHub repos'}
+            </button>
+          </div>
         </div>
+
       </section>
 
       {error ? (

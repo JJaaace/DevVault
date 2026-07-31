@@ -53,6 +53,7 @@ export function PortfolioPage() {
   const projects = useMemo(() => portfolio?.projects ?? [], [portfolio])
   const skills = useMemo(() => portfolio?.skills ?? [], [portfolio])
   const publicUrl = typeof window !== 'undefined' && username ? `${window.location.origin}/portfolio/${username}` : ''
+  const resumeUrl = typeof window !== 'undefined' && username ? `${window.location.origin}/resume/${username}?print=1` : ''
 
   const topProjects = useMemo(
     () => sortByUpdatedAtDesc(projects).slice(0, 3),
@@ -154,6 +155,10 @@ export function PortfolioPage() {
             <div className="rounded-[1.1rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--color-text-soft)]">
               {publicUrl}
             </div>
+            <Link to={`/resume/${username}?print=1`} target="_blank" rel="noreferrer" className="button-primary px-4 py-2 text-sm">
+              Print / Save PDF
+            </Link>
+            {resumeUrl ? <div className="text-xs text-[var(--color-text-muted)]">Resume preview: {resumeUrl}</div> : null}
             <Link to="/dashboard" className="button-secondary px-4 py-2 text-sm">Back to workspace</Link>
           </div>
         </DashboardCard>

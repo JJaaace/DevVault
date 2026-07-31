@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
+import { Toaster } from 'sonner'
 import './index.css'
 import App from './App.jsx'
 
@@ -32,6 +33,22 @@ export function Root() {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <Root />
+    <>
+      <Root />
+      <Toaster
+        position="top-right"
+        richColors
+        closeButton
+        toastOptions={{
+          style: {
+            borderRadius: '1rem',
+            border: '1px solid rgba(126, 89, 45, 0.16)',
+            background: 'rgba(255, 255, 255, 0.96)',
+            color: 'var(--color-text)',
+            boxShadow: '0 24px 60px rgba(37, 24, 12, 0.14)',
+          },
+        }}
+      />
+    </>
   </StrictMode>,
 )
