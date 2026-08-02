@@ -28,7 +28,7 @@ export function GoalsPage() {
           <p className="section-eyebrow">Goal types</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {['Daily Goals', 'Weekly Goals', 'Monthly Goals', 'Career Goals'].map((label) => (
-              <div key={label} className="rounded-[1.15rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+              <div key={label} className="rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
                 <p className="font-medium text-[var(--color-text)]">{label}</p>
               </div>
             ))}

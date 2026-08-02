@@ -31,7 +31,7 @@ export function SkillProgressRing({ percentage, color, label }) {
         />
       </svg>
 
-      <div className="relative flex h-[84px] w-[84px] flex-col items-center justify-center rounded-full border border-white/80 bg-[rgba(255,255,255,0.86)] text-center shadow-[0_18px_35px_rgba(110,76,34,0.08)]">
+      <div className="relative flex h-[84px] w-[84px] flex-col items-center justify-center rounded-full border border-[rgba(214,160,89,0.24)] bg-[rgba(45,34,25,0.88)] text-center shadow-[0_18px_35px_rgba(18,12,8,0.3)]">
         <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{normalizedPercentage}%</span>
         <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-text-muted)]">
           {label}

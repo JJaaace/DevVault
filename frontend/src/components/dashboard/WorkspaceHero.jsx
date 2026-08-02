@@ -9,7 +9,7 @@ function getActionClass(tone) {
   }
 
   if (tone === 'accent') {
-    return 'button-secondary border-[rgba(234,139,33,0.2)] bg-[rgba(255,247,236,0.95)] text-[var(--color-brand-ink)]'
+    return 'button-secondary border-[rgba(234,139,33,0.28)] bg-[rgba(63,45,30,0.9)] text-[var(--color-brand-ink)] shadow-[0_16px_28px_rgba(18,12,8,0.3)]'
   }
 
   return 'button-secondary'
@@ -20,15 +20,19 @@ export function WorkspaceHero({
   userName,
   activitySeries,
   currentStreak,
-  currentFocus,
   upcomingDeadline,
   quickStats = [],
   quickActions = [],
   progress = [],
+  syncState = null,
 }) {
   const momentum = progress.length
     ? Math.round(progress.reduce((sum, item) => sum + Number(item.value || 0), 0) / progress.length)
     : 0
+  const isSyncing = syncState?.status === 'running' || syncState?.status === 'queued'
+  const deadlineActionClass = upcomingDeadline?.actionLabel?.toLowerCase() === 'set deadline'
+    ? 'button-primary deadline-cta'
+    : 'button-primary'
 
   return (
     <section className="surface-card surface-card--hero relative overflow-hidden px-6 py-8 md:px-8 md:py-10 fade-in-up">
@@ -41,45 +45,35 @@ export function WorkspaceHero({
       <div className="relative grid gap-8 xl:grid-cols-[1.12fr_0.88fr] xl:items-stretch">
         <div className="flex flex-col gap-6">
           <div className="max-w-3xl space-y-4">
-            <p className="section-eyebrow">{greeting}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="section-eyebrow">{greeting}</p>
+              {isSyncing ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(234,139,33,0.18)] bg-[rgba(255,247,233,0.92)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--color-brand-ink)]">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-brand-strong)]" />
+                  Syncing...
+                </span>
+              ) : null}
+            </div>
             <h2 className="text-4xl font-semibold tracking-tight text-[var(--color-text)] md:text-5xl">
               {userName ? `${userName}, your workspace is live.` : 'Your workspace is live.'}
             </h2>
             <p className="max-w-2xl text-base leading-7 text-[var(--color-text-soft)]">
-              {currentFocus?.title ? `Focus: ${currentFocus.title}.` : 'Everything you need is ready in one place.'}
+              Everything you need is ready in one place.
             </p>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="widget-card widget-card--accent border border-[rgba(255,255,255,0.55)] p-5 shadow-[0_24px_50px_rgba(110,76,34,0.08)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-eyebrow">{currentFocus?.eyebrow || 'Current focus'}</p>
-                  <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text)]">{currentFocus?.title || 'Ready for your next move'}</h3>
-                  {currentFocus?.detail ? <p className="mt-2 text-sm text-[var(--color-text-soft)]">{currentFocus.detail}</p> : null}
-                  {currentFocus?.meta ? <p className="mt-3 text-xs font-semibold uppercase tracking-[0.26em] text-[var(--color-text-muted)]">{currentFocus.meta}</p> : null}
-                </div>
-                {currentFocus?.href ? (
-                  <Link to={currentFocus.href} className="button-secondary shrink-0 px-4 py-2 text-sm">
-                    {currentFocus?.actionLabel || 'Open'}
-                  </Link>
-                ) : null}
+          <div className="widget-card p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="section-eyebrow">{upcomingDeadline?.label || 'Upcoming deadline'}</p>
+                <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text)]">{upcomingDeadline?.title || 'No deadline added'}</h3>
+                {upcomingDeadline?.detail ? <p className="mt-2 text-sm text-[var(--color-text-soft)]">{upcomingDeadline.detail}</p> : null}
               </div>
-            </div>
-
-            <div className="widget-card p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-eyebrow">{upcomingDeadline?.label || 'Upcoming deadline'}</p>
-                  <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text)]">{upcomingDeadline?.title || 'No deadline added'}</h3>
-                  {upcomingDeadline?.detail ? <p className="mt-2 text-sm text-[var(--color-text-soft)]">{upcomingDeadline.detail}</p> : null}
-                </div>
-                {upcomingDeadline?.href ? (
-                  <Link to={upcomingDeadline.href} className="button-primary shrink-0 px-4 py-2 text-sm">
-                    {upcomingDeadline?.actionLabel || 'Open'}
-                  </Link>
-                ) : null}
-              </div>
+              {upcomingDeadline?.href ? (
+                <Link to={upcomingDeadline.href} className={`${deadlineActionClass} w-fit shrink-0 px-4 py-2 text-sm`}>
+                  {upcomingDeadline?.actionLabel || 'Open'}
+                </Link>
+              ) : null}
             </div>
           </div>
 
@@ -98,13 +92,13 @@ export function WorkspaceHero({
                 <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--color-text)]">{momentum}% workspace momentum</h3>
                 <p className="mt-2 text-sm text-[var(--color-text-soft)]">Profile, projects, and skills are all advancing from your real workspace data.</p>
               </div>
-              <div className="rounded-[1.35rem] border border-white/80 bg-[rgba(255,255,255,0.72)] p-3 shadow-[0_18px_35px_rgba(110,76,34,0.08)]">
+              <div className="rounded-[1.35rem] border border-[rgba(214,160,89,0.24)] bg-[rgba(44,33,24,0.82)] p-3 shadow-[0_18px_35px_rgba(18,12,8,0.3)]">
                 <MiniSparkline values={activitySeries} color="#d96a16" className="h-14 w-[190px] max-w-full" />
               </div>
             </div>
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               {progress.map((item) => (
-                <div key={item.label} className="rounded-[1.15rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.7)] p-4">
+                <div key={item.label} className="rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[var(--color-text-muted)]">{item.label}</p>
@@ -137,7 +131,7 @@ export function WorkspaceHero({
                 <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{currentStreak}</span>
               </ProgressRing>
             </div>
-            <div className="mt-4 rounded-[1.35rem] border border-white/70 bg-[rgba(255,255,255,0.68)] p-3">
+            <div className="mt-4 rounded-[1.35rem] border border-[rgba(214,160,89,0.22)] bg-[rgba(44,33,24,0.82)] p-3">
               <MiniSparkline values={activitySeries} color="#d96a16" className="h-14 w-full" />
             </div>
           </div>

@@ -1,0 +1,28 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="160" y1="120" x2="1420" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2B1E15"/>
+      <stop offset="0.45" stop-color="#1A130E"/>
+      <stop offset="1" stop-color="#120E0B"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="720" y1="210" x2="940" y2="620" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD68F"/>
+      <stop offset="0.55" stop-color="#EA8B21"/>
+      <stop offset="1" stop-color="#C96B1A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(810 440) rotate(90) scale(320 420)">
+      <stop stop-color="#F7CC81" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#F7CC81" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="810" cy="440" r="320" fill="url(#glow)"/>
+  <path d="M810 170L610 260V430C610 578 690 676 810 730C930 676 1010 578 1010 430V260L810 170Z" fill="url(#shield)"/>
+  <path d="M695 395H925M735 465H885M765 535H855" stroke="#1A120C" stroke-width="30" stroke-linecap="round"/>
+  <path d="M640 315H740L810 385H965" stroke="#FFF1D5" stroke-opacity="0.9" stroke-width="18" stroke-linecap="round"/>
+  <rect x="170" y="660" width="1260" height="120" rx="28" fill="#20160F" fill-opacity="0.75" stroke="#7E5930" stroke-opacity="0.38"/>
+  <rect x="210" y="695" width="240" height="50" rx="16" fill="#352316"/>
+  <rect x="480" y="695" width="190" height="50" rx="16" fill="#3C2819"/>
+  <rect x="695" y="695" width="270" height="50" rx="16" fill="#452D1B"/>
+  <rect x="990" y="695" width="220" height="50" rx="16" fill="#50331F"/>
+</svg>

@@ -50,7 +50,14 @@ export function ResumeDocument({ profile, projects = [], skills = [], onPrint, p
   const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || profile.username
   const headline = [profile.currentRole, profile.location].filter(Boolean).join(' · ')
   const sortedProjects = [...projects].sort((left, right) => new Date(right.updatedAt || right.createdAt) - new Date(left.updatedAt || left.createdAt))
-  const sortedSkills = [...skills].sort((left, right) => Number(right.percentage || 0) - Number(left.percentage || 0))
+  const sortedSkills = [...skills].sort((left, right) => {
+    const yearsDelta = Number(right.yearsExperience || 0) - Number(left.yearsExperience || 0)
+    if (yearsDelta !== 0) {
+      return yearsDelta
+    }
+
+    return Number(right.projectsBuilt || 0) - Number(left.projectsBuilt || 0)
+  })
 
   return (
     <div className="resume-page">
@@ -94,7 +101,7 @@ export function ResumeDocument({ profile, projects = [], skills = [], onPrint, p
                   <div key={project.id} className="resume-item">
                     <div className="resume-item-header">
                       <h3>{project.title}</h3>
-                      <span>{project.completionPercentage || 0}%</span>
+                      <span>{project.status?.replace(/_/g, ' ') || 'PLANNING'}</span>
                     </div>
                     <p className="resume-muted">
                       {[project.status?.replace(/_/g, ' '), project.targetCompletion ? `Target ${formatDate(project.targetCompletion)}` : '']
@@ -127,9 +134,9 @@ export function ResumeDocument({ profile, projects = [], skills = [], onPrint, p
                   <div key={skill.id} className="resume-item">
                     <div className="resume-item-header">
                       <h3>{skill.name}</h3>
-                      <span>{skill.percentage || 0}%</span>
+                      <span>{skill.yearsExperience || 0}y</span>
                     </div>
-                    <p className="resume-muted">{[skill.category, skill.experienceLevel].filter(Boolean).join(' · ')}</p>
+                    <p className="resume-muted">{[skill.category, skill.experienceLevel, skill.projectsBuilt !== undefined ? `${skill.projectsBuilt} projects` : ''].filter(Boolean).join(' · ')}</p>
                     {skill.notes ? <p>{skill.notes}</p> : null}
                   </div>
                 )) : <p className="resume-muted">No skills yet.</p>}

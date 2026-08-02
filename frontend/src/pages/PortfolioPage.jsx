@@ -6,9 +6,19 @@ import { ProjectCard } from '../components/ProjectCard'
 import { SectionHeader } from '../components/SectionHeader'
 import { SkillCard } from '../components/SkillCard'
 import { fetchPublicPortfolio } from '../lib/portfolioApi'
+import { DevVaultLogo } from '../components/branding/DevVaultLogo'
 
-function sortByUpdatedAtDesc(items = []) {
-  return [...items].sort((left, right) => new Date(right.updatedAt || right.createdAt) - new Date(left.updatedAt || left.createdAt))
+function sortProjectsForShowcase(items = []) {
+  return [...items].sort((left, right) => {
+    const leftOrder = Number.isInteger(left.displayOrder) ? left.displayOrder : Number.MAX_SAFE_INTEGER
+    const rightOrder = Number.isInteger(right.displayOrder) ? right.displayOrder : Number.MAX_SAFE_INTEGER
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder
+    }
+
+    return new Date(right.updatedAt || right.createdAt) - new Date(left.updatedAt || left.createdAt)
+  })
 }
 
 export function PortfolioPage() {
@@ -50,18 +60,27 @@ export function PortfolioPage() {
   }
 
   const profile = portfolio?.profile || null
-  const projects = useMemo(() => portfolio?.projects ?? [], [portfolio])
+  const projects = useMemo(() => sortProjectsForShowcase(portfolio?.projects ?? []), [portfolio])
   const skills = useMemo(() => portfolio?.skills ?? [], [portfolio])
   const publicUrl = typeof window !== 'undefined' && username ? `${window.location.origin}/portfolio/${username}` : ''
   const resumeUrl = typeof window !== 'undefined' && username ? `${window.location.origin}/resume/${username}?print=1` : ''
 
   const topProjects = useMemo(
-    () => sortByUpdatedAtDesc(projects).slice(0, 3),
+    () => sortProjectsForShowcase(projects).slice(0, 4),
     [projects],
   )
 
   const topSkills = useMemo(
-    () => [...skills].sort((left, right) => right.percentage - left.percentage).slice(0, 4),
+    () => [...skills]
+      .sort((left, right) => {
+        const yearsDelta = Number(right.yearsExperience || 0) - Number(left.yearsExperience || 0)
+        if (yearsDelta !== 0) {
+          return yearsDelta
+        }
+
+        return Number(right.projectsBuilt || 0) - Number(left.projectsBuilt || 0)
+      })
+      .slice(0, 4),
     [skills],
   )
 
@@ -70,13 +89,13 @@ export function PortfolioPage() {
       ...projects.map((project) => ({
         type: 'project',
         label: project.title,
-        detail: `${project.status.replace('_', ' ').toLowerCase()} · ${project.completionPercentage}% complete`,
+        detail: `${project.status.replace('_', ' ').toLowerCase()} status`,
         updatedAt: project.updatedAt || project.createdAt,
       })),
       ...skills.map((skill) => ({
         type: 'skill',
         label: skill.name,
-        detail: `${skill.category} · ${skill.percentage}% complete`,
+        detail: `${skill.category} · ${skill.yearsExperience || 0}y experience`,
         updatedAt: skill.updatedAt || skill.createdAt,
       })),
     ]
@@ -130,6 +149,7 @@ export function PortfolioPage() {
         <div className="absolute inset-x-0 top-0 h-40 bg-[linear-gradient(135deg,rgba(249,201,110,0.28),rgba(234,139,33,0.2),rgba(217,106,22,0.18))]" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
+            <DevVaultLogo size="sm" />
             <p className="section-eyebrow">Public portfolio</p>
             <h2 className="mt-3 text-4xl font-semibold tracking-tight text-[var(--color-text)] md:text-5xl">
               {fullName || profile.username}
@@ -152,7 +172,7 @@ export function PortfolioPage() {
 
         <DashboardCard title="Portfolio link" description="Share this URL with recruiters or friends so they can view your work without editing anything.">
           <div className="space-y-3">
-            <div className="rounded-[1.1rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--color-text-soft)]">
+            <div className="rounded-[1.1rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3 text-sm text-[var(--color-text-soft)]">
               {publicUrl}
             </div>
             <Link to={`/resume/${username}?print=1`} target="_blank" rel="noreferrer" className="button-primary px-4 py-2 text-sm">
@@ -171,19 +191,19 @@ export function PortfolioPage() {
         <DashboardCard title="Skills" description="Tracked competencies and study focus.">
           <p className="text-3xl font-semibold tracking-tight text-[var(--color-text)]">{skills.length}</p>
         </DashboardCard>
-        <DashboardCard title="Most active" description={topProjects[0]?.title || 'No projects yet'}>
-          <p className="text-sm text-[var(--color-text-soft)]">{topProjects[0]?.completionPercentage || 0}% complete</p>
+        <DashboardCard title="Latest status" description={topProjects[0]?.title || 'No projects yet'}>
+          <p className="text-sm text-[var(--color-text-soft)]">{topProjects[0]?.status?.replace(/_/g, ' ') || 'No status yet'}</p>
         </DashboardCard>
         <DashboardCard title="Top skill" description={topSkills[0]?.name || 'No skills yet'}>
-          <p className="text-sm text-[var(--color-text-soft)]">{topSkills[0]?.percentage || 0}% complete</p>
+          <p className="text-sm text-[var(--color-text-soft)]">{topSkills[0]?.yearsExperience || 0} years experience</p>
         </DashboardCard>
       </div>
 
-      {topProjects.length ? (
+      {projects.length ? (
         <section className="page-stack">
-          <SectionHeader eyebrow="Projects" title="Project highlights" description="Your most recent and relevant projects for a public portfolio view." />
-          <div className="grid gap-6 lg:grid-cols-2">
-            {topProjects.map((project) => (
+          <SectionHeader eyebrow="Projects" title="Featured project showcase" description="Large, ordered cards designed to present your best developer and product work first." />
+          <div className="grid gap-6">
+            {projects.map((project) => (
               <ProjectCard key={project.id} project={project} readOnly />
             ))}
           </div>
@@ -205,7 +225,7 @@ export function PortfolioPage() {
         <DashboardCard title="Recent activity" description="The latest project and skill updates on this portfolio.">
           <div className="space-y-3">
             {recentActivity.map((entry) => (
-              <div key={`${entry.type}-${entry.label}-${entry.updatedAt}`} className="flex items-start justify-between gap-3 rounded-[1.1rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+              <div key={`${entry.type}-${entry.label}-${entry.updatedAt}`} className="flex items-start justify-between gap-3 rounded-[1.1rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
                 <div>
                   <p className="font-medium text-[var(--color-text)]">{entry.label}</p>
                   <p className="text-sm text-[var(--color-text-soft)]">{entry.detail}</p>

@@ -1,13 +1,48 @@
 import { useState } from 'react'
 import { SKILL_LEVEL_OPTIONS, DEFAULT_SKILL_COLOR, normalizeSkillDate } from '../lib/skillUtils'
+import { getTechnologyOptions } from '../lib/technologyCatalog'
 
-function normalizePercentage(value) {
+function normalizeInteger(value, fallback = 0) {
+  if (value === '' || value === null || value === undefined) {
+    return fallback
+  }
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function normalizeOptionalInteger(value) {
+  if (value === '' || value === null || value === undefined) {
+    return null
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return null
+  }
+
+  return parsed
+}
+
+function normalizeTechnologyKey(value, name) {
+  if (!value || value === 'custom') {
+    if (!name) {
+      return null
+    }
+
+    return name.toLowerCase().replace(/\s+/g, '-')
+  }
+
+  return value
+}
+
+function normalizeExperienceYears(value) {
   if (value === '' || value === null || value === undefined) {
     return 0
   }
 
   const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
 }
 
 function fieldClass(error) {
@@ -54,9 +89,12 @@ function Field({ label, name, value, onChange, placeholder, error, type = 'text'
 function buildInitialState(skill) {
   return {
     name: skill?.name ?? '',
+    technologyKey: skill?.technologyKey ?? 'custom',
     category: skill?.category ?? '',
     experienceLevel: skill?.experienceLevel ?? 'BEGINNER',
-    percentage: skill?.percentage ?? 0,
+    yearsExperience: skill?.yearsExperience ?? 0,
+    firstUsedYear: skill?.firstUsedYear ?? new Date().getFullYear(),
+    projectsBuilt: skill?.projectsBuilt ?? 0,
     color: skill?.color ?? DEFAULT_SKILL_COLOR,
     lastUsed: skill?.lastUsed ? new Date(skill.lastUsed).toISOString().slice(0, 10) : '',
     notes: skill?.notes ?? '',
@@ -66,6 +104,7 @@ function buildInitialState(skill) {
 
 export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting = false, errors = {}, errorMessage = '' }) {
   const [formData, setFormData] = useState(() => buildInitialState(skill))
+  const technologyOptions = [{ value: 'custom', label: 'Custom / not listed' }, ...getTechnologyOptions()]
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -88,9 +127,12 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
     event.preventDefault()
     onSubmit({
       name: formData.name.trim(),
+      technologyKey: normalizeTechnologyKey(formData.technologyKey, formData.name.trim()),
       category: formData.category.trim(),
       experienceLevel: formData.experienceLevel,
-      percentage: normalizePercentage(formData.percentage),
+      yearsExperience: normalizeExperienceYears(formData.yearsExperience),
+      firstUsedYear: normalizeOptionalInteger(formData.firstUsedYear),
+      projectsBuilt: normalizeInteger(formData.projectsBuilt, 0),
       color: formData.color.trim(),
       lastUsed: normalizeSkillDate(formData.lastUsed),
       notes: formData.notes.trim(),
@@ -106,7 +148,7 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
             <p className="section-eyebrow">Skills</p>
             <h3 className="section-title mt-2 text-2xl">{skill ? 'Edit skill' : 'Add a new skill'}</h3>
             <p className="section-copy mt-2 text-sm">
-              Track progress like a premium learning dashboard, with levels, percentages, and related projects.
+              Track practical experience with levels, years, project count, and related work.
             </p>
           </div>
           <button type="button" onClick={onClose} className="button-secondary px-4 py-2 text-sm">
@@ -115,7 +157,7 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
         </div>
 
         {errorMessage ? (
-          <div className="mt-5 rounded-[1.15rem] border border-[rgba(185,56,28,0.18)] bg-[rgba(255,242,236,0.9)] p-4 text-sm text-[#a83f1d]">
+          <div className="mt-5 rounded-[1.15rem] border border-[rgba(185,56,28,0.3)] bg-[rgba(74,31,21,0.86)] p-4 text-sm text-[#f6c9bb]">
             {errorMessage}
           </div>
         ) : null}
@@ -127,13 +169,26 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            <Field label="Experience level" name="experienceLevel" value={formData.experienceLevel} onChange={handleChange} type="select" options={SKILL_LEVEL_OPTIONS} required />
-            <Field label="Color" name="color" value={formData.color} onChange={handleChange} type="color" helpText="Use a warm or vivid accent color for the ring." error={errors.color} />
+            <Field
+              label="Technology logo"
+              name="technologyKey"
+              value={formData.technologyKey}
+              onChange={handleChange}
+              type="select"
+              options={technologyOptions}
+            />
+            <Field label="Color" name="color" value={formData.color} onChange={handleChange} type="color" helpText="Accent used on the skill card edge and highlights." error={errors.color} />
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            <Field label="Percentage" name="percentage" value={formData.percentage} onChange={handleChange} type="range" min="0" max="100" step="1" helpText={`${formData.percentage}% complete`} error={errors.percentage} />
+            <Field label="Experience level" name="experienceLevel" value={formData.experienceLevel} onChange={handleChange} type="select" options={SKILL_LEVEL_OPTIONS} required />
             <Field label="Last used" name="lastUsed" value={formData.lastUsed} onChange={handleChange} type="date" error={errors.lastUsed} />
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            <Field label="Years of experience" name="yearsExperience" value={formData.yearsExperience} onChange={handleChange} type="number" min="0" max="60" step="1" error={errors.yearsExperience} />
+            <Field label="First used year" name="firstUsedYear" value={formData.firstUsedYear} onChange={handleChange} type="number" min="1980" max="2100" step="1" error={errors.firstUsedYear} />
+            <Field label="Projects built" name="projectsBuilt" value={formData.projectsBuilt} onChange={handleChange} type="number" min="0" max="500" step="1" error={errors.projectsBuilt} />
           </div>
 
           <Field label="Notes" name="notes" value={formData.notes} onChange={handleChange} placeholder="How this skill is being used right now." type="textarea" rows={4} />
@@ -147,7 +202,7 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
                 return (
                   <label
                     key={project.id}
-                    className={`flex items-center gap-3 rounded-[1.15rem] border px-4 py-3 text-sm transition ${checked ? 'border-[rgba(234,139,33,0.26)] bg-[rgba(255,247,233,0.88)]' : 'border-[rgba(126,89,45,0.12)] bg-white/70 hover:bg-white/90'}`}
+                    className={`flex items-center gap-3 rounded-[1.15rem] border px-4 py-3 text-sm transition ${checked ? 'border-[rgba(234,139,33,0.32)] bg-[rgba(63,45,30,0.86)]' : 'border-[rgba(214,160,89,0.2)] bg-[rgba(46,34,25,0.82)] hover:bg-[rgba(60,43,30,0.88)]'}`}
                   >
                     <input
                       type="checkbox"
@@ -159,7 +214,7 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
                   </label>
                 )
               }) : (
-                <div className="rounded-[1.15rem] border border-dashed border-[rgba(126,89,45,0.14)] bg-[rgba(255,255,255,0.58)] px-4 py-4 text-sm text-[var(--color-text-soft)]">
+                <div className="rounded-[1.15rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(43,32,24,0.8)] px-4 py-4 text-sm text-[var(--color-text-soft)]">
                   Create a project first so you can link it here.
                 </div>
               )}

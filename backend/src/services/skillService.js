@@ -13,7 +13,7 @@ try {
 
 const { getLocalStore, updateLocalStore } = require('./localStore')
 
-const SKILL_LEVELS = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT']
+const SKILL_LEVELS = ['BEGINNER', 'ADVANCED_BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT']
 
 function createServiceError(statusCode, message, details) {
   const error = new Error(message)
@@ -72,6 +72,15 @@ function isHexColor(value) {
   return typeof value === 'string' && /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(value.trim())
 }
 
+function normalizeTechnologyKey(value) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim().toLowerCase()
+  return trimmed ? trimmed.replace(/\s+/g, '-') : null
+}
+
 function validateSkillPayload(payload) {
   const errors = {}
 
@@ -84,12 +93,30 @@ function validateSkillPayload(payload) {
   }
 
   if (!payload.experienceLevel || !SKILL_LEVELS.includes(payload.experienceLevel)) {
-    errors.experienceLevel = 'Experience level must be beginner, intermediate, advanced, or expert.'
+    errors.experienceLevel = 'Experience level must be beginner, advanced beginner, intermediate, advanced, or expert.'
   }
 
-  const percentage = normalizeInteger(payload.percentage)
-  if (percentage === null || percentage < 0 || percentage > 100) {
-    errors.percentage = 'Percentage must be a number between 0 and 100.'
+  const yearsExperience = normalizeInteger(payload.yearsExperience)
+  if (yearsExperience === null || yearsExperience < 0 || yearsExperience > 60) {
+    errors.yearsExperience = 'Years of experience must be between 0 and 60.'
+  }
+
+  const firstUsedYear = normalizeInteger(payload.firstUsedYear)
+  const currentYear = new Date().getFullYear()
+  if (firstUsedYear === null || firstUsedYear < 1980 || firstUsedYear > currentYear + 1) {
+    errors.firstUsedYear = `First used year must be between 1980 and ${currentYear + 1}.`
+  }
+
+  const projectsBuilt = normalizeInteger(payload.projectsBuilt)
+  if (projectsBuilt === null || projectsBuilt < 0 || projectsBuilt > 500) {
+    errors.projectsBuilt = 'Projects built must be between 0 and 500.'
+  }
+
+  if (yearsExperience !== null && firstUsedYear !== null) {
+    const inferredMinYears = Math.max(0, currentYear - firstUsedYear)
+    if (yearsExperience > inferredMinYears + 1) {
+      errors.yearsExperience = 'Years of experience looks inconsistent with first used year.'
+    }
   }
 
   if (!isHexColor(payload.color)) {
@@ -107,9 +134,13 @@ function buildSkillPayload(payload, clerkUserId) {
   return {
     ownerClerkUserId: clerkUserId,
     name: payload.name.trim(),
+    technologyKey: normalizeTechnologyKey(payload.technologyKey || payload.name),
     category: payload.category.trim(),
     experienceLevel: payload.experienceLevel,
     percentage: normalizeInteger(payload.percentage) ?? 0,
+    yearsExperience: normalizeInteger(payload.yearsExperience) ?? 0,
+    firstUsedYear: normalizeInteger(payload.firstUsedYear),
+    projectsBuilt: normalizeInteger(payload.projectsBuilt) ?? 0,
     color: payload.color.trim(),
     lastUsed: normalizeDate(payload.lastUsed),
     notes: normalizeText(payload.notes),
@@ -140,8 +171,22 @@ function enrichMemorySkills(skills, projects) {
   })
 }
 
+function hasPrismaSkillAccess() {
+  return Boolean(
+    prisma
+    && prisma.user
+    && prisma.skill
+    && typeof prisma.user.upsert === 'function'
+    && typeof prisma.skill.findMany === 'function'
+    && typeof prisma.skill.findFirst === 'function'
+    && typeof prisma.skill.create === 'function'
+    && typeof prisma.skill.update === 'function'
+    && typeof prisma.skill.delete === 'function',
+  )
+}
+
 async function ensureOwnerUser(clerkUserId) {
-  if (!prisma) {
+  if (!hasPrismaSkillAccess()) {
     return
   }
 
@@ -169,22 +214,34 @@ async function resolveRelatedProjects(clerkUserId, relatedProjectIds) {
 }
 
 async function listSkills(clerkUserId) {
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    const skills = await prisma.skill.findMany({
-      where: { ownerClerkUserId: clerkUserId },
-      include: { relatedProjects: { include: { project: true } } },
-      orderBy: [{ category: 'asc' }, { updatedAt: 'desc' }],
-    })
+  if (hasPrismaSkillAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      const skills = await prisma.skill.findMany({
+        where: { ownerClerkUserId: clerkUserId },
+        include: { relatedProjects: { include: { project: true } } },
+        orderBy: [{ yearsExperience: 'desc' }, { updatedAt: 'desc' }],
+      })
 
-    return skills.map((skill) => attachRelatedProjectIds(skill, skill.relatedProjects))
+      return skills.map((skill) => attachRelatedProjectIds(skill, skill.relatedProjects))
+    } catch {
+      // fall through to local storage when Prisma is unavailable
+    }
   }
 
   const projects = await listProjects(clerkUserId)
   return enrichMemorySkills(
     getLocalStore().skills
       .filter((skill) => skill.ownerClerkUserId === clerkUserId)
-      .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt)),
+      .sort((left, right) => {
+        const leftYears = Number(left.yearsExperience || 0)
+        const rightYears = Number(right.yearsExperience || 0)
+        if (leftYears !== rightYears) {
+          return rightYears - leftYears
+        }
+
+        return new Date(right.updatedAt) - new Date(left.updatedAt)
+      }),
     projects,
   )
 }
@@ -195,18 +252,26 @@ async function getSkillById(clerkUserId, skillId) {
     throw createServiceError(400, 'Skill ID must be a valid number.')
   }
 
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    const skill = await prisma.skill.findFirst({
-      where: { id, ownerClerkUserId: clerkUserId },
-      include: { relatedProjects: { include: { project: true } } },
-    })
+  if (hasPrismaSkillAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      const skill = await prisma.skill.findFirst({
+        where: { id, ownerClerkUserId: clerkUserId },
+        include: { relatedProjects: { include: { project: true } } },
+      })
 
-    if (!skill) {
-      throw createServiceError(404, 'Skill not found.')
+      if (!skill) {
+        throw createServiceError(404, 'Skill not found.')
+      }
+
+      return attachRelatedProjectIds(skill, skill.relatedProjects)
+    } catch (error) {
+      if (error?.statusCode === 404) {
+        throw error
+      }
+
+      // fall through to local storage when Prisma is unavailable
     }
-
-    return attachRelatedProjectIds(skill, skill.relatedProjects)
   }
 
   const projects = await listProjects(clerkUserId)
@@ -229,19 +294,23 @@ async function createSkill(clerkUserId, payload) {
 
   const data = buildSkillPayload(payload, clerkUserId)
 
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    const skill = await prisma.skill.create({
-      data: {
-        ...data,
-        relatedProjects: {
-          create: relatedProjectIds.map((projectId) => ({ project: { connect: { id: projectId } } })),
+  if (hasPrismaSkillAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      const skill = await prisma.skill.create({
+        data: {
+          ...data,
+          relatedProjects: {
+            create: relatedProjectIds.map((projectId) => ({ project: { connect: { id: projectId } } })),
+          },
         },
-      },
-      include: { relatedProjects: { include: { project: true } } },
-    })
+        include: { relatedProjects: { include: { project: true } } },
+      })
 
-    return attachRelatedProjectIds(skill, skill.relatedProjects)
+      return attachRelatedProjectIds(skill, skill.relatedProjects)
+    } catch {
+      // fall through to local storage when Prisma is unavailable
+    }
   }
 
   const projectList = await listProjects(clerkUserId)
@@ -283,29 +352,37 @@ async function updateSkill(clerkUserId, skillId, payload) {
 
   const data = buildSkillPayload(payload, clerkUserId)
 
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    const existing = await prisma.skill.findFirst({
-      where: { id, ownerClerkUserId: clerkUserId },
-    })
+  if (hasPrismaSkillAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      const existing = await prisma.skill.findFirst({
+        where: { id, ownerClerkUserId: clerkUserId },
+      })
 
-    if (!existing) {
-      throw createServiceError(404, 'Skill not found.')
-    }
+      if (!existing) {
+        throw createServiceError(404, 'Skill not found.')
+      }
 
-    const skill = await prisma.skill.update({
-      where: { id: existing.id },
-      data: {
-        ...data,
-        relatedProjects: {
-          deleteMany: {},
-          create: relatedProjectIds.map((projectId) => ({ project: { connect: { id: projectId } } })),
+      const skill = await prisma.skill.update({
+        where: { id: existing.id },
+        data: {
+          ...data,
+          relatedProjects: {
+            deleteMany: {},
+            create: relatedProjectIds.map((projectId) => ({ project: { connect: { id: projectId } } })),
+          },
         },
-      },
-      include: { relatedProjects: { include: { project: true } } },
-    })
+        include: { relatedProjects: { include: { project: true } } },
+      })
 
-    return attachRelatedProjectIds(skill, skill.relatedProjects)
+      return attachRelatedProjectIds(skill, skill.relatedProjects)
+    } catch (error) {
+      if (error?.statusCode === 404) {
+        throw error
+      }
+
+      // fall through to local storage when Prisma is unavailable
+    }
   }
 
   const projects = await listProjects(clerkUserId)
@@ -334,21 +411,29 @@ async function deleteSkill(clerkUserId, skillId) {
     throw createServiceError(400, 'Skill ID must be a valid number.')
   }
 
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    const existing = await prisma.skill.findFirst({
-      where: { id, ownerClerkUserId: clerkUserId },
-    })
+  if (hasPrismaSkillAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      const existing = await prisma.skill.findFirst({
+        where: { id, ownerClerkUserId: clerkUserId },
+      })
 
-    if (!existing) {
-      throw createServiceError(404, 'Skill not found.')
+      if (!existing) {
+        throw createServiceError(404, 'Skill not found.')
+      }
+
+      await prisma.skill.delete({
+        where: { id: existing.id },
+      })
+
+      return null
+    } catch (error) {
+      if (error?.statusCode === 404) {
+        throw error
+      }
+
+      // fall through to local storage when Prisma is unavailable
     }
-
-    await prisma.skill.delete({
-      where: { id: existing.id },
-    })
-
-    return null
   }
 
   const existing = getLocalStore().skills.find((skill) => skill.id === id && skill.ownerClerkUserId === clerkUserId)

@@ -21,6 +21,18 @@ function getUniqueDates(entries) {
   return [...new Set(entries.map((entry) => dateKey(entry.date)))]
 }
 
+function normalizeProjectStatus(status) {
+  if (status === 'IN_PROGRESS') {
+    return 'BUILDING'
+  }
+
+  if (status === 'PLANNING' || status === 'BUILDING' || status === 'COMPLETED' || status === 'ARCHIVED') {
+    return status
+  }
+
+  return 'PLANNING'
+}
+
 export function calculateProfileCompletion(profile) {
   const requiredFields = [
     profile?.firstName,
@@ -45,6 +57,21 @@ export function calculateProfileCompletion(profile) {
   return { completed, total: requiredFields.length, percentage }
 }
 
+export function getProjectStatusCounts(projects = []) {
+  return projects.reduce((counts, project) => {
+    const status = normalizeProjectStatus(project.status)
+    return {
+      ...counts,
+      [status]: counts[status] + 1,
+    }
+  }, {
+    PLANNING: 0,
+    BUILDING: 0,
+    COMPLETED: 0,
+    ARCHIVED: 0,
+  })
+}
+
 export function buildRecentActivity(profile, projects = [], skills = []) {
   const entries = []
 
@@ -65,10 +92,11 @@ export function buildRecentActivity(profile, projects = [], skills = []) {
       return
     }
 
+    const status = normalizeProjectStatus(project.status).replace('_', ' ').toLowerCase()
     entries.push({
       type: 'project',
       label: project.title,
-      description: `${project.status.replace('_', ' ').toLowerCase()} • ${project.completionPercentage}% complete`,
+      description: `${status} status`,
       date: projectDate,
     })
   })
@@ -98,12 +126,10 @@ export function buildActivitySeries(entries) {
     return date
   })
 
-  const counts = dates.map((date) => {
+  return dates.map((date) => {
     const key = dateKey(date)
     return entries.filter((entry) => dateKey(entry.date) === key).length
   })
-
-  return counts
 }
 
 export function calculateCurrentStreak(entries) {
@@ -134,19 +160,16 @@ export function calculateCurrentStreak(entries) {
 
 export function buildWorkspaceStats(profile, projects = [], skills = [], activityEntries = []) {
   const profileCompletion = calculateProfileCompletion(profile)
-  const averageProjectProgress = projects.length
-    ? Math.round(projects.reduce((sum, project) => sum + Number(project.completionPercentage || 0), 0) / projects.length)
-    : 0
-  const averageSkillProgress = skills.length
-    ? Math.round(skills.reduce((sum, skill) => sum + Number(skill.percentage || 0), 0) / skills.length)
-    : 0
+  const statusCounts = getProjectStatusCounts(projects)
 
   return {
     profileCompletion: profileCompletion.percentage,
     projectCount: projects.length,
-    averageProjectProgress,
+    statusCounts,
     skillCount: skills.length,
-    averageSkillProgress,
+    averageSkillProgress: skills.length
+      ? Math.round(skills.reduce((sum, skill) => sum + Number(skill.percentage || 0), 0) / skills.length)
+      : 0,
     currentStreak: calculateCurrentStreak(activityEntries),
   }
 }
@@ -208,7 +231,10 @@ function getIncompleteProfileFields(profile) {
 }
 
 function getActiveProjects(projects = []) {
-  return projects.filter((project) => project.status !== 'ARCHIVED')
+  return projects.filter((project) => {
+    const status = normalizeProjectStatus(project.status)
+    return status === 'PLANNING' || status === 'BUILDING'
+  })
 }
 
 function getSoonestDeadlineProject(projects = []) {
@@ -222,14 +248,14 @@ function getSoonestDeadlineProject(projects = []) {
     .sort((left, right) => left.deadline - right.deadline)[0] || null
 }
 
-function getLowestProgressProject(projects = []) {
+function getMostUrgentActiveProject(projects = []) {
   const activeProjects = getActiveProjects(projects)
   if (!activeProjects.length) {
     return null
   }
 
   return [...activeProjects]
-    .sort((left, right) => Number(left.completionPercentage || 0) - Number(right.completionPercentage || 0))[0]
+    .sort((left, right) => new Date(left.updatedAt || left.createdAt) - new Date(right.updatedAt || right.createdAt))[0]
 }
 
 function getLowestProgressSkill(skills = []) {
@@ -244,7 +270,7 @@ function getLowestProgressSkill(skills = []) {
 export function buildHeroFocus(profile, projects = [], skills = []) {
   const profileCompletion = getCurrentProfileCompletion(profile)
   const deadlineProject = getSoonestDeadlineProject(projects)
-  const activeProject = getLowestProgressProject(projects)
+  const activeProject = getMostUrgentActiveProject(projects)
   const lowestSkill = getLowestProgressSkill(skills)
   const incompleteFields = getIncompleteProfileFields(profile)
 
@@ -263,8 +289,8 @@ export function buildHeroFocus(profile, projects = [], skills = []) {
     return {
       eyebrow: 'Current focus',
       title: deadlineProject.title,
-      detail: `${deadlineProject.completionPercentage || 0}% complete · due ${formatDate(deadlineProject.deadline)}`,
-      meta: deadlineProject.status.replace('_', ' ').toLowerCase(),
+      detail: `${normalizeProjectStatus(deadlineProject.status).replace('_', ' ').toLowerCase()} status · due ${formatDate(deadlineProject.deadline)}`,
+      meta: 'Upcoming deadline',
       href: '/projects',
       actionLabel: 'Open project',
     }
@@ -274,8 +300,8 @@ export function buildHeroFocus(profile, projects = [], skills = []) {
     return {
       eyebrow: 'Current focus',
       title: activeProject.title,
-      detail: `${activeProject.completionPercentage || 0}% complete · ${activeProject.status.replace('_', ' ').toLowerCase()}`,
-      meta: 'Most active project',
+      detail: `${normalizeProjectStatus(activeProject.status).replace('_', ' ').toLowerCase()} status`,
+      meta: 'Active build lane',
       href: '/projects',
       actionLabel: 'Open project',
     }
@@ -309,24 +335,26 @@ export function buildHeroDeadline(projects = []) {
     return {
       label: 'Upcoming deadline',
       title: 'No deadline added',
-      detail: 'Add one in Projects to turn this card into a live target.',
-      href: '/projects/new',
-      actionLabel: 'Set deadline',
+      detail: 'Set a target date to keep your current project momentum visible.',
+      href: null,
+      actionLabel: null,
+      needsDeadline: true,
     }
   }
 
   return {
     label: 'Upcoming deadline',
     title: deadlineProject.title,
-    detail: `Due ${formatDate(deadlineProject.deadline)} · ${deadlineProject.completionPercentage || 0}% complete`,
+    detail: `Due ${formatDate(deadlineProject.deadline)} · ${normalizeProjectStatus(deadlineProject.status).replace(/_/g, ' ').toLowerCase()} status`,
     href: '/projects',
     actionLabel: 'Open project',
+    needsDeadline: false,
   }
 }
 
-export function buildHeroQuickStats(profile, projects = [], skills = [], activityEntries = []) {
+export function buildHeroQuickStats(profile, projects = [], activityEntries = []) {
   const profileCompletion = calculateProfileCompletion(profile).percentage
-  const activeProjects = getActiveProjects(projects)
+  const statusCounts = getProjectStatusCounts(projects)
   const upcomingCount = projects.filter((project) => {
     if (!project.targetCompletion) {
       return false
@@ -338,8 +366,9 @@ export function buildHeroQuickStats(profile, projects = [], skills = [], activit
 
   return [
     { label: 'Profile', value: `${profileCompletion}%`, note: 'Completion' },
-    { label: 'Projects', value: activeProjects.length, note: 'Active' },
-    { label: 'Skills', value: skills.length, note: 'Tracked' },
+    { label: 'Planning', value: statusCounts.PLANNING, note: 'Project status' },
+    { label: 'Building', value: statusCounts.BUILDING, note: 'Project status' },
+    { label: 'Completed', value: statusCounts.COMPLETED, note: 'Project status' },
     { label: 'Streak', value: `${calculateCurrentStreak(activityEntries)}d`, note: 'Coding days' },
     { label: 'Deadlines', value: upcomingCount, note: 'Upcoming' },
   ]
@@ -367,6 +396,14 @@ export function buildHeroQuickActions(profile, projects = [], skills = [], deadl
     tone: 'secondary',
   })
 
+  if (deadline?.needsDeadline) {
+    actions.push({
+      label: 'Set deadline',
+      href: '/projects',
+      tone: 'accent',
+    })
+  }
+
   if (deadline?.href && deadline?.actionLabel) {
     actions.unshift({
       label: deadline.actionLabel,
@@ -380,16 +417,16 @@ export function buildHeroQuickActions(profile, projects = [], skills = [], deadl
 
 export function buildHeroProgress(profile, projects = [], skills = []) {
   const profileCompletion = calculateProfileCompletion(profile).percentage
-  const projectMomentum = projects.length
-    ? Math.round(projects.reduce((sum, project) => sum + Number(project.completionPercentage || 0), 0) / projects.length)
-    : 0
+  const statusCounts = getProjectStatusCounts(projects)
+  const totalProjects = projects.length || 1
+  const shippedRatio = Math.round(((statusCounts.COMPLETED + statusCounts.ARCHIVED) / totalProjects) * 100)
   const skillMomentum = skills.length
     ? Math.round(skills.reduce((sum, skill) => sum + Number(skill.percentage || 0), 0) / skills.length)
     : 0
 
   return [
     { label: 'Profile', value: profileCompletion, note: 'Ready for recruiters' },
-    { label: 'Projects', value: projectMomentum, note: 'Build momentum' },
+    { label: 'Delivery', value: projects.length ? shippedRatio : 0, note: 'Completed or archived' },
     { label: 'Skills', value: skillMomentum, note: 'Stay sharp' },
   ]
 }
@@ -420,15 +457,19 @@ export function buildOnboardingChecklist(profile, projects = [], skills = []) {
 }
 
 export function buildProjectProgressSummary(projects = []) {
-  const activeProjects = projects.filter((project) => project.status !== 'ARCHIVED')
-  const topProjects = [...activeProjects].sort((left, right) => right.completionPercentage - left.completionPercentage).slice(0, 3)
+  const statusCounts = getProjectStatusCounts(projects)
+  const activeProjects = projects.filter((project) => {
+    const status = normalizeProjectStatus(project.status)
+    return status === 'PLANNING' || status === 'BUILDING'
+  })
+  const recentProjects = [...projects]
+    .sort((left, right) => new Date(right.updatedAt || right.createdAt) - new Date(left.updatedAt || left.createdAt))
+    .slice(0, 4)
 
   return {
+    statusCounts,
     activeProjects,
-    topProjects,
-    average: projects.length
-      ? Math.round(projects.reduce((sum, project) => sum + Number(project.completionPercentage || 0), 0) / projects.length)
-      : 0,
+    recentProjects,
   }
 }
 
@@ -447,9 +488,9 @@ export function buildSkillOverviewSummary(skills = []) {
 
 export function buildLearningGoals(profile, projects = [], skills = []) {
   const profileCompletion = calculateProfileCompletion(profile).percentage
-  const projectCompletion = projects.length
-    ? Math.round((projects.filter((project) => project.status === 'COMPLETED').length / projects.length) * 100)
-    : 0
+  const statusCounts = getProjectStatusCounts(projects)
+  const totalProjects = projects.length || 1
+  const projectPipeline = Math.round(((statusCounts.BUILDING + statusCounts.COMPLETED + statusCounts.ARCHIVED) / totalProjects) * 100)
   const skillCompletion = skills.length
     ? Math.round(skills.reduce((sum, skill) => sum + Number(skill.percentage || 0), 0) / skills.length)
     : 0
@@ -461,9 +502,9 @@ export function buildLearningGoals(profile, projects = [], skills = []) {
       note: 'Keep your professional story sharp and recruiter-ready.',
     },
     {
-      title: 'Ship more projects',
-      progress: projectCompletion,
-      note: 'Use projects to show momentum and product thinking.',
+      title: 'Advance project pipeline',
+      progress: projects.length ? projectPipeline : 0,
+      note: `${statusCounts.PLANNING} planning · ${statusCounts.BUILDING} building · ${statusCounts.COMPLETED} completed`,
     },
     {
       title: 'Push core skills',
@@ -477,6 +518,7 @@ export function buildUpcomingDeadlines(projects = []) {
   const upcoming = projects
     .map((project) => ({
       ...project,
+      status: normalizeProjectStatus(project.status),
       deadline: toDate(project.targetCompletion),
     }))
     .filter((project) => project.deadline)
@@ -489,19 +531,25 @@ export function buildUpcomingDeadlines(projects = []) {
 export function buildCertificationsOverview() {
   return [
     {
-      name: 'Cloud foundations',
-      progress: 18,
-      note: 'Track certificates that support platform and deployment work.',
+      name: 'AWS Certified Cloud Practitioner',
+      organization: 'Amazon Web Services',
+      status: 'IN_PROGRESS',
+      earnedDate: null,
+      logo: '☁',
     },
     {
-      name: 'Frontend systems',
-      progress: 42,
-      note: 'Use this to follow badges tied to accessibility and UI craftsmanship.',
+      name: 'Meta Front-End Developer Certificate',
+      organization: 'Meta',
+      status: 'PLANNED',
+      earnedDate: null,
+      logo: '⚛',
     },
     {
-      name: 'Security basics',
-      progress: 12,
-      note: 'Keep future compliance and security learning visible.',
+      name: 'Google Cybersecurity Certificate',
+      organization: 'Google',
+      status: 'EARNED',
+      earnedDate: '2026-05-11',
+      logo: '🛡',
     },
   ]
 }

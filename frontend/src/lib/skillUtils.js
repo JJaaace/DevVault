@@ -1,5 +1,6 @@
 export const SKILL_LEVEL_OPTIONS = [
   { value: 'BEGINNER', label: 'Beginner' },
+  { value: 'ADVANCED_BEGINNER', label: 'Advanced Beginner' },
   { value: 'INTERMEDIATE', label: 'Intermediate' },
   { value: 'ADVANCED', label: 'Advanced' },
   { value: 'EXPERT', label: 'Expert' },
@@ -10,17 +11,21 @@ const levelMeta = {
     label: 'Beginner',
     toneClass: 'text-[var(--color-text-soft)]',
   },
+  ADVANCED_BEGINNER: {
+    label: 'Advanced Beginner',
+    toneClass: 'text-[#d9ad74]',
+  },
   INTERMEDIATE: {
     label: 'Intermediate',
     toneClass: 'text-[var(--color-brand-ink)]',
   },
   ADVANCED: {
     label: 'Advanced',
-    toneClass: 'text-[#2c8551]',
+    toneClass: 'text-[#dfb983]',
   },
   EXPERT: {
     label: 'Expert',
-    toneClass: 'text-[#7a3ad6]',
+    toneClass: 'text-[#e58f3d]',
   },
 }
 
@@ -48,6 +53,15 @@ export function formatSkillDate(value) {
 export function formatSkillRelativeDate(value) {
   const formatted = formatSkillDate(value)
   return formatted ? `Last used ${formatted}` : 'Recently used'
+}
+
+export function formatYearsExperience(value) {
+  const years = Number(value || 0)
+  if (!Number.isFinite(years) || years <= 0) {
+    return 'Less than 1 year'
+  }
+
+  return years === 1 ? '1 year' : `${years} years`
 }
 
 export function skillTextareaToList(value) {

@@ -16,15 +16,20 @@ import { CertificationsPage } from './pages/CertificationsPage'
 import { GoalsPage } from './pages/GoalsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ResumePage } from './pages/ResumePage'
+import { WorkspaceResumePage } from './pages/WorkspaceResumePage'
+import { InsideVaultPage } from './pages/InsideVaultPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { DevVaultLogo } from './components/branding/DevVaultLogo'
+import { LaunchIntro } from './components/branding/LaunchIntro'
 
 function App() {
   return (
     <Layout>
+      <LaunchIntro />
       <header className="sticky top-0 z-30 px-4 pt-4">
         <div className="nav-shell nav-shell--workspace mx-auto max-w-6xl gap-4">
           <div className="nav-brand">
-            <div className="nav-brand-mark text-sm font-semibold">DV</div>
+            <DevVaultLogo compact />
             <div>
               <p className="nav-kicker">DevVault</p>
               <h1 className="nav-title">Workspace</h1>
@@ -34,7 +39,7 @@ function App() {
           <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
             <SignedIn>
               <WorkspaceNavigation />
-              <div className="rounded-full border border-[rgba(126,89,45,0.14)] bg-white/70 p-1 shadow-sm">
+              <div className="rounded-full border border-[rgba(214,160,89,0.24)] bg-[rgba(48,36,26,0.86)] p-1 shadow-sm">
                 <UserButton afterSignOutUrl="/" />
               </div>
             </SignedIn>
@@ -130,6 +135,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <GoalsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inside-vault"
+            element={
+              <ProtectedRoute>
+                <InsideVaultPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/resume-workspace"
+            element={
+              <ProtectedRoute>
+                <WorkspaceResumePage />
               </ProtectedRoute>
             }
           />

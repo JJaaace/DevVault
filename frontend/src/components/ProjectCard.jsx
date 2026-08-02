@@ -3,10 +3,10 @@ import { formatProjectDate, formatProjectRelativeDate, getProjectStatusMeta } fr
 
 function BannerFallback() {
   return (
-    <div className="relative flex aspect-[16/9] items-end overflow-hidden rounded-[1.35rem] bg-[linear-gradient(135deg,rgba(249,201,110,0.4),rgba(234,139,33,0.38),rgba(217,106,22,0.42))] p-4">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.55),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.38),transparent_28%)]" />
-      <div className="relative flex items-center gap-3 rounded-full border border-white/30 bg-white/30 px-3 py-2 text-xs font-semibold text-white backdrop-blur-md">
-        Project banner
+    <div className="project-banner-fallback relative flex aspect-[16/8] items-end overflow-hidden rounded-[1rem] p-3">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,224,178,0.36),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(227,132,57,0.25),transparent_28%)]" />
+      <div className="relative flex items-center gap-2 rounded-full border border-white/20 bg-[rgba(32,23,15,0.46)] px-2.5 py-1.5 text-[11px] font-semibold text-[rgba(255,243,222,0.92)] backdrop-blur-md">
+        Showcase banner
       </div>
     </div>
   )
@@ -15,73 +15,74 @@ function BannerFallback() {
 export function ProjectCard({ project, readOnly = false }) {
   const statusMeta = getProjectStatusMeta(project.status)
   const techStack = project.techStack || []
+  const keyFeatures = project.keyFeatures || []
 
   return (
-    <article className="widget-card overflow-hidden hover-lift">
-      <div className="p-4 pb-0">
-        {project.bannerImageUrl ? (
-          <img
-            src={project.bannerImageUrl}
-            alt={`${project.title} banner`}
-            className="aspect-[16/9] w-full rounded-[1.35rem] object-cover"
-          />
-        ) : (
-          <BannerFallback />
-        )}
+    <article className="widget-card project-showcase-card project-showcase-card--compact h-full overflow-hidden hover-lift">
+      <div className="group/project relative p-3.5 pb-0">
+        <div className="project-banner-shell">
+          {project.bannerImageUrl ? (
+            <img
+              src={project.bannerImageUrl}
+              alt={`${project.title} banner`}
+              className="project-banner-image aspect-[16/8] w-full rounded-[1rem] object-cover"
+            />
+          ) : (
+            <BannerFallback />
+          )}
+        </div>
+        <div className="project-banner-glow" />
       </div>
 
-      <div className="space-y-5 p-6">
-        <div className="flex items-start justify-between gap-4">
+      <div className="space-y-3.5 p-4 md:p-[1.125rem]">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <div className={`inline-flex ${statusMeta.badgeClass}`}>
+            <div className={`inline-flex text-[10px] ${statusMeta.badgeClass}`}>
               {statusMeta.label}
             </div>
-            <h3 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--color-text)]">
+            <h3 className="mt-2.5 text-xl font-semibold tracking-tight text-[var(--color-text)] md:text-[1.33rem]">
               {project.title}
             </h3>
-          </div>
-          <div className="rounded-full border border-[rgba(126,89,45,0.14)] bg-white/70 px-3 py-2 text-sm font-semibold text-[var(--color-brand-ink)]">
-            {project.completionPercentage}%
+            {project.displayOrder ? (
+              <p className="mt-1 text-[10px] uppercase tracking-[0.22em] text-[var(--color-text-muted)]">Feature slot #{project.displayOrder}</p>
+            ) : null}
           </div>
         </div>
 
-        <p className="text-sm leading-7 text-[var(--color-text-soft)]">{project.description}</p>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.28em] text-[var(--color-text-muted)]">
-            <span>Progress</span>
-            <span>{project.completionPercentage}% complete</span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16] transition-all"
-              style={{ width: `${project.completionPercentage}%` }}
-            />
-          </div>
-        </div>
+        <p className="project-description text-sm leading-6 text-[var(--color-text-soft)]">{project.description}</p>
 
         {techStack.length ? (
           <div className="flex flex-wrap gap-2">
             {techStack.map((item) => (
-              <span key={item} className="chip">
+              <span key={item} className="chip tech-tag text-[11px]">
                 {item}
               </span>
             ))}
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between gap-3 text-sm text-[var(--color-text-muted)]">
+        {keyFeatures.length ? (
+          <div className="project-features-grid">
+            {keyFeatures.slice(0, 3).map((feature) => (
+              <div key={feature} className="project-feature-item">
+                {feature}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--color-text-muted)]">
           <span>{formatProjectRelativeDate(project.updatedAt)}</span>
           <span>{project.dateStarted ? `Started ${formatProjectDate(project.dateStarted)}` : 'Ready to launch'}</span>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-wrap gap-2.5">
           <a
             href={project.githubUrl || '#'}
             target="_blank"
             rel="noreferrer"
             aria-disabled={!project.githubUrl}
-            className={`button-secondary justify-center px-4 py-2 text-sm ${!project.githubUrl ? 'pointer-events-none opacity-50' : ''}`}
+            className={`button-secondary min-w-[6.9rem] justify-center px-3 py-1.5 text-xs ${!project.githubUrl ? 'pointer-events-none opacity-50' : ''}`}
           >
             GitHub
           </a>
@@ -90,12 +91,12 @@ export function ProjectCard({ project, readOnly = false }) {
             target="_blank"
             rel="noreferrer"
             aria-disabled={!project.liveDemoUrl}
-            className={`button-secondary justify-center px-4 py-2 text-sm ${!project.liveDemoUrl ? 'pointer-events-none opacity-50' : ''}`}
+            className={`button-secondary min-w-[6.9rem] justify-center px-3 py-1.5 text-xs ${!project.liveDemoUrl ? 'pointer-events-none opacity-50' : ''}`}
           >
             Live demo
           </a>
           {readOnly ? null : (
-            <Link to={`/projects/${project.id}/edit`} className="button-primary justify-center px-4 py-2 text-sm">
+            <Link to={`/projects/${project.id}/edit`} className="button-primary min-w-[6.9rem] justify-center px-3 py-1.5 text-xs">
               Edit
             </Link>
           )}

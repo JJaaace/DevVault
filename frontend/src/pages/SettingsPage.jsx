@@ -42,7 +42,7 @@ export function SettingsPage() {
               <p className="mt-2 text-sm text-[var(--color-text-soft)]">Use Clerk to manage sign-out and account actions.</p>
             </div>
             <SignedIn>
-              <div className="rounded-full border border-[rgba(126,89,45,0.14)] bg-white/70 p-1 shadow-sm">
+              <div className="rounded-full border border-[rgba(214,160,89,0.24)] bg-[rgba(48,36,26,0.86)] p-1 shadow-sm">
                 <UserButton afterSignOutUrl="/" />
               </div>
             </SignedIn>

@@ -40,7 +40,7 @@ export function ProfileCard({ profile, onEdit }) {
               className="h-16 w-16 rounded-2xl border border-[rgba(126,89,45,0.16)] object-cover"
             />
           ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[rgba(126,89,45,0.16)] bg-[rgba(255,255,255,0.7)] text-lg font-semibold text-[var(--color-brand-ink)]">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[rgba(214,160,89,0.24)] bg-[rgba(47,35,25,0.86)] text-lg font-semibold text-[var(--color-brand-ink)]">
               {(fullName || profile.username || '?').slice(0, 2).toUpperCase()}
             </div>
           )}

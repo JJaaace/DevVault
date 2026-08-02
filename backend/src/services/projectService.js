@@ -11,7 +11,7 @@ try {
 
 const { getLocalStore, updateLocalStore } = require('./localStore')
 
-const PROJECT_STATUSES = ['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ARCHIVED']
+const PROJECT_STATUSES = ['PLANNING', 'BUILDING', 'COMPLETED', 'ARCHIVED']
 
 function createServiceError(statusCode, message, details) {
   const error = new Error(message)
@@ -64,35 +64,86 @@ function normalizeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+function resolveDisplayOrder(value, fallback = 0) {
+  const normalized = normalizeInteger(value)
+  if (normalized === null || normalized < 0) {
+    return fallback
+  }
+
+  return normalized
+}
+
+function looksLikeDomainPath(value) {
+  return /^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(value)
+}
+
+function normalizeHttpUrl(value) {
+  const normalized = normalizeText(value)
+  if (!normalized) {
+    return null
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized
+  }
+
+  if (looksLikeDomainPath(normalized)) {
+    return `https://${normalized}`
+  }
+
+  return normalized
+}
+
 function validateUrl(value, fieldName, errors) {
-  if (value && !/^https?:\/\//i.test(value)) {
+  const normalized = normalizeHttpUrl(value)
+  if (normalized && !/^https?:\/\//i.test(normalized)) {
     errors[fieldName] = `${fieldName} must start with http:// or https://.`
   }
 }
 
-function validateProjectPayload(payload) {
+function validateImageReference(value, fieldName, errors) {
+  if (!value) {
+    return
+  }
+
+  const normalized = String(value).trim()
+  if (!normalized) {
+    return
+  }
+
+  const isHttpUrl = /^https?:\/\//i.test(normalized)
+  const isLocalAssetPath = normalized.startsWith('/')
+  const isDataOrBlob = /^(data:|blob:)/i.test(normalized)
+
+  if (!isHttpUrl && !isLocalAssetPath && !isDataOrBlob) {
+    errors[fieldName] = `${fieldName} must be an http(s) URL or a local asset path starting with /.`
+  }
+}
+
+function validateProjectPayload(payload, options = {}) {
+  const { partial = false } = options
   const errors = {}
 
-  if (!payload.title || payload.title.trim().length < 3) {
+  const displayOrder = normalizeInteger(payload.displayOrder)
+  if (payload.displayOrder !== undefined && payload.displayOrder !== null && payload.displayOrder !== '' && (displayOrder === null || displayOrder < 0)) {
+    errors.displayOrder = 'Display order must be a non-negative number.'
+  }
+
+  if ((!partial || payload.title !== undefined) && (!payload.title || payload.title.trim().length < 3)) {
     errors.title = 'Title is required.'
   }
 
-  if (!payload.description || payload.description.trim().length < 20) {
+  if ((!partial || payload.description !== undefined) && (!payload.description || payload.description.trim().length < 20)) {
     errors.description = 'Description must be at least 20 characters long.'
   }
 
-  if (!payload.status || !PROJECT_STATUSES.includes(payload.status)) {
-    errors.status = 'Status must be one of Planning, In Progress, Completed, or Archived.'
-  }
-
-  const completionPercentage = normalizeInteger(payload.completionPercentage)
-  if (completionPercentage === null || completionPercentage < 0 || completionPercentage > 100) {
-    errors.completionPercentage = 'Completion percentage must be a number between 0 and 100.'
+  if ((!partial || payload.status !== undefined) && (!payload.status || !PROJECT_STATUSES.includes(payload.status))) {
+    errors.status = 'Status must be one of Planning, Building, Completed, or Archived.'
   }
 
   validateUrl(payload.githubUrl, 'githubUrl', errors)
   validateUrl(payload.liveDemoUrl, 'liveDemoUrl', errors)
-  validateUrl(payload.bannerImageUrl || payload.bannerImage, 'bannerImageUrl', errors)
+  validateImageReference(payload.image || payload.bannerImageUrl || payload.bannerImage, 'bannerImageUrl', errors)
 
   if (payload.dateStarted && !normalizeDate(payload.dateStarted)) {
     errors.dateStarted = 'Date started must be a valid date.'
@@ -102,20 +153,40 @@ function validateProjectPayload(payload) {
     errors.targetCompletion = 'Target completion must be a valid date.'
   }
 
+  const keyFeatures = normalizeList(payload.keyFeatures)
+  if (keyFeatures.some((feature) => feature.length > 120)) {
+    errors.keyFeatures = 'Each key feature must be 120 characters or fewer.'
+  }
+
   return errors
 }
 
 function buildProjectPayload(payload, clerkUserId) {
   return {
     ownerClerkUserId: clerkUserId,
-    title: payload.title.trim(),
-    description: payload.description.trim(),
-    githubUrl: normalizeText(payload.githubUrl),
-    liveDemoUrl: normalizeText(payload.liveDemoUrl),
-    bannerImageUrl: normalizeText(payload.bannerImageUrl || payload.bannerImage),
+    displayOrder: payload.displayOrder === undefined || payload.displayOrder === null || payload.displayOrder === ''
+      ? null
+      : resolveDisplayOrder(payload.displayOrder, 0),
+    title: String(payload.title || '').trim(),
+    description: String(payload.description || '').trim(),
+    githubRepoId: normalizeInteger(payload.githubRepoId),
+    githubFullName: normalizeText(payload.githubFullName),
+    githubDescription: normalizeText(payload.githubDescription),
+    githubStars: normalizeInteger(payload.githubStars),
+    githubForks: normalizeInteger(payload.githubForks),
+    githubLanguages: normalizeList(payload.githubLanguages),
+    githubTopics: normalizeList(payload.githubTopics),
+    githubUrl: normalizeHttpUrl(payload.githubUrl),
+    githubHomepage: normalizeHttpUrl(payload.githubHomepage),
+    githubUpdatedAt: normalizeDate(payload.githubUpdatedAt),
+    githubPushedAt: normalizeDate(payload.githubPushedAt),
+    githubArchivedAt: normalizeDate(payload.githubArchivedAt),
+    liveDemoUrl: normalizeHttpUrl(payload.liveDemoUrl),
+    bannerImageUrl: normalizeText(payload.image || payload.bannerImageUrl || payload.bannerImage),
+    accentTone: normalizeText(payload.accentTone),
     techStack: normalizeList(payload.techStack),
-    status: payload.status,
-    completionPercentage: normalizeInteger(payload.completionPercentage) ?? 0,
+    keyFeatures: normalizeList(payload.keyFeatures),
+    status: payload.status || 'PLANNING',
     dateStarted: normalizeDate(payload.dateStarted),
     targetCompletion: normalizeDate(payload.targetCompletion),
     challenges: normalizeText(payload.challenges),
@@ -137,8 +208,22 @@ function ensureProjectOwnership(project, clerkUserId) {
   return project
 }
 
+function hasPrismaProjectAccess() {
+  return Boolean(
+    prisma
+    && prisma.user
+    && prisma.project
+    && typeof prisma.user.upsert === 'function'
+    && typeof prisma.project.findMany === 'function'
+    && typeof prisma.project.findFirst === 'function'
+    && typeof prisma.project.create === 'function'
+    && typeof prisma.project.update === 'function'
+    && typeof prisma.project.delete === 'function',
+  )
+}
+
 async function ensureOwnerUser(clerkUserId) {
-  if (!prisma) {
+  if (!hasPrismaProjectAccess()) {
     return
   }
 
@@ -150,17 +235,33 @@ async function ensureOwnerUser(clerkUserId) {
 }
 
 async function listProjects(clerkUserId) {
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    return prisma.project.findMany({
-      where: { ownerClerkUserId: clerkUserId },
-      orderBy: { updatedAt: 'desc' },
-    })
+  if (hasPrismaProjectAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      return await prisma.project.findMany({
+        where: { ownerClerkUserId: clerkUserId },
+        orderBy: [
+          { displayOrder: 'asc' },
+          { updatedAt: 'desc' },
+        ],
+      })
+    } catch {
+      // fall through to local storage when Prisma is unavailable
+    }
   }
 
   return getLocalStore().projects
     .filter((project) => project.ownerClerkUserId === clerkUserId)
-    .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))
+    .sort((left, right) => {
+      const leftOrder = Number.isInteger(left.displayOrder) ? left.displayOrder : Number.MAX_SAFE_INTEGER
+      const rightOrder = Number.isInteger(right.displayOrder) ? right.displayOrder : Number.MAX_SAFE_INTEGER
+
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder
+      }
+
+      return new Date(right.updatedAt) - new Date(left.updatedAt)
+    })
 }
 
 async function getProjectById(clerkUserId, projectId) {
@@ -169,17 +270,25 @@ async function getProjectById(clerkUserId, projectId) {
     throw createServiceError(400, 'Project ID must be a valid number.')
   }
 
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    const project = await prisma.project.findFirst({
-      where: { id, ownerClerkUserId: clerkUserId },
-    })
+  if (hasPrismaProjectAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      const project = await prisma.project.findFirst({
+        where: { id, ownerClerkUserId: clerkUserId },
+      })
 
-    if (!project) {
-      throw createServiceError(404, 'Project not found.')
+      if (!project) {
+        throw createServiceError(404, 'Project not found.')
+      }
+
+      return project
+    } catch (error) {
+      if (error?.statusCode === 404) {
+        throw error
+      }
+
+      // fall through to local storage when Prisma is unavailable
     }
-
-    return project
   }
 
   return ensureProjectOwnership(findMemoryProject(id, clerkUserId), clerkUserId)
@@ -193,18 +302,34 @@ async function createProject(clerkUserId, payload) {
 
   const data = buildProjectPayload(payload, clerkUserId)
 
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
+  if (hasPrismaProjectAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
 
-    return prisma.project.create({
-      data,
-    })
+      if (data.displayOrder === null) {
+        const highestOrder = await prisma.project.findFirst({
+          where: { ownerClerkUserId: clerkUserId },
+          orderBy: { displayOrder: 'desc' },
+          select: { displayOrder: true },
+        })
+
+        data.displayOrder = Number(highestOrder?.displayOrder || 0) + 1
+      }
+
+      return await prisma.project.create({
+        data,
+      })
+    } catch {
+      // fall through to local storage when Prisma is unavailable
+    }
   }
 
   const store = getLocalStore()
+  const nextDisplayOrder = data.displayOrder === null ? store.nextProjectId : data.displayOrder
   const project = {
     id: store.nextProjectId,
     ...data,
+    displayOrder: nextDisplayOrder,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
@@ -223,34 +348,55 @@ async function updateProject(clerkUserId, projectId, payload) {
     throw createServiceError(400, 'Project ID must be a valid number.')
   }
 
-  const errors = validateProjectPayload(payload)
+  const errors = validateProjectPayload(payload, { partial: true })
   if (Object.keys(errors).length > 0) {
     throw createServiceError(400, 'Invalid project data.', errors)
   }
 
-  const data = buildProjectPayload(payload, clerkUserId)
+  if (hasPrismaProjectAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      const existing = await prisma.project.findFirst({
+        where: { id, ownerClerkUserId: clerkUserId },
+      })
 
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    const existing = await prisma.project.findFirst({
-      where: { id, ownerClerkUserId: clerkUserId },
-    })
+      if (!existing) {
+        throw createServiceError(404, 'Project not found.')
+      }
 
-    if (!existing) {
-      throw createServiceError(404, 'Project not found.')
+      const mergedPayload = {
+        ...existing,
+        ...payload,
+      }
+      const data = buildProjectPayload(mergedPayload, clerkUserId)
+
+      return await prisma.project.update({
+        where: { id: existing.id },
+        data: {
+          ...data,
+          displayOrder: payload.displayOrder === undefined ? existing.displayOrder : data.displayOrder,
+        },
+      })
+    } catch (error) {
+      if (error?.statusCode === 404) {
+        throw error
+      }
+
+      // fall through to local storage when Prisma is unavailable
     }
-
-    return prisma.project.update({
-      where: { id: existing.id },
-      data,
-    })
   }
 
   const existing = ensureProjectOwnership(findMemoryProject(id, clerkUserId), clerkUserId)
+  const mergedPayload = {
+    ...existing,
+    ...payload,
+  }
+  const data = buildProjectPayload(mergedPayload, clerkUserId)
 
   const updatedProject = {
     ...existing,
     ...data,
+    displayOrder: payload.displayOrder === undefined ? existing.displayOrder : data.displayOrder,
     updatedAt: new Date(),
   }
 
@@ -267,21 +413,29 @@ async function deleteProject(clerkUserId, projectId) {
     throw createServiceError(400, 'Project ID must be a valid number.')
   }
 
-  if (prisma) {
-    await ensureOwnerUser(clerkUserId)
-    const existing = await prisma.project.findFirst({
-      where: { id, ownerClerkUserId: clerkUserId },
-    })
+  if (hasPrismaProjectAccess()) {
+    try {
+      await ensureOwnerUser(clerkUserId)
+      const existing = await prisma.project.findFirst({
+        where: { id, ownerClerkUserId: clerkUserId },
+      })
 
-    if (!existing) {
-      throw createServiceError(404, 'Project not found.')
+      if (!existing) {
+        throw createServiceError(404, 'Project not found.')
+      }
+
+      await prisma.project.delete({
+        where: { id: existing.id },
+      })
+
+      return null
+    } catch (error) {
+      if (error?.statusCode === 404) {
+        throw error
+      }
+
+      // fall through to local storage when Prisma is unavailable
     }
-
-    await prisma.project.delete({
-      where: { id: existing.id },
-    })
-
-    return null
   }
 
   ensureProjectOwnership(findMemoryProject(id, clerkUserId), clerkUserId)

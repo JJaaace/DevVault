@@ -10,6 +10,8 @@ try {
 }
 
 const { getLocalStore, updateLocalStore } = require('../services/localStore')
+const { getGitHubSyncState } = require('../services/githubSyncService')
+const { sendSuccess, sendCreated, sendNoContent, sendError } = require('../utils/http')
 
 function validateProfilePayload(payload) {
   const errors = {}
@@ -154,7 +156,11 @@ async function getPublicPortfolio(req, res) {
     const username = typeof req.params.username === 'string' ? req.params.username.trim() : ''
 
     if (username.length < 2) {
-      return res.status(400).json({ message: 'Username is required.' })
+      return sendError(res, {
+        statusCode: 400,
+        code: 'USERNAME_REQUIRED',
+        message: 'Username is required.',
+      }, 'USERNAME_REQUIRED', 'Username is required.')
     }
 
     let profile = null
@@ -174,7 +180,11 @@ async function getPublicPortfolio(req, res) {
     }
 
     if (!profile) {
-      return res.status(404).json({ message: 'Portfolio not found.' })
+      return sendError(res, {
+        statusCode: 404,
+        code: 'PORTFOLIO_NOT_FOUND',
+        message: 'Portfolio not found.',
+      }, 'PORTFOLIO_NOT_FOUND', 'Portfolio not found.')
     }
 
     const { listProjects } = require('../services/projectService')
@@ -185,18 +195,20 @@ async function getPublicPortfolio(req, res) {
       listSkills(profile.clerkUserId),
     ])
 
-    return res.json({
+    return sendSuccess(res, {
       profile: serializePublicProfile(profile),
       projects: projects.filter((project) => project.status !== 'ARCHIVED').map(serializePublicProject),
       skills: skills.map(serializePublicSkill),
     })
   } catch (error) {
-    return res.status(500).json({ message: 'Unable to load portfolio.', error: error.message })
+    return sendError(res, error, 'PORTFOLIO_GET_FAILED', 'Unable to load portfolio.')
   }
 }
 
 async function getProfile(req, res) {
   try {
+    const githubSyncState = getGitHubSyncState(req.auth.userId)
+
     if (prisma) {
       try {
         const profile = await prisma.profile.findUnique({
@@ -204,10 +216,17 @@ async function getProfile(req, res) {
         })
 
         if (!profile) {
-          return res.status(404).json({ message: 'Profile not found.' })
+          return sendError(res, {
+            statusCode: 404,
+            code: 'PROFILE_NOT_FOUND',
+            message: 'Profile not found.',
+          }, 'PROFILE_NOT_FOUND', 'Profile not found.')
         }
 
-        return res.json(profile)
+        return sendSuccess(res, {
+          ...profile,
+          githubSyncState,
+        })
       } catch (error) {
         // fall through to in-memory storage when Prisma is unavailable or unreachable
       }
@@ -215,12 +234,19 @@ async function getProfile(req, res) {
 
     const profile = findMemoryProfile(req.auth.userId)
     if (!profile) {
-      return res.status(404).json({ message: 'Profile not found.' })
+      return sendError(res, {
+        statusCode: 404,
+        code: 'PROFILE_NOT_FOUND',
+        message: 'Profile not found.',
+      }, 'PROFILE_NOT_FOUND', 'Profile not found.')
     }
 
-    return res.json(profile)
+    return sendSuccess(res, {
+      ...profile,
+      githubSyncState,
+    })
   } catch (error) {
-    return res.status(500).json({ message: 'Unable to load profile.', error: error.message })
+    return sendError(res, error, 'PROFILE_GET_FAILED', 'Unable to load profile.')
   }
 }
 
@@ -228,7 +254,12 @@ async function createProfile(req, res) {
   try {
     const errors = validateProfilePayload(req.body)
     if (Object.keys(errors).length > 0) {
-      return res.status(400).json({ message: 'Invalid profile data.', errors })
+      return sendError(res, {
+        statusCode: 400,
+        code: 'PROFILE_VALIDATION_FAILED',
+        message: 'Invalid profile data.',
+        details: errors,
+      }, 'PROFILE_VALIDATION_FAILED', 'Invalid profile data.')
     }
 
     if (prisma) {
@@ -238,21 +269,29 @@ async function createProfile(req, res) {
         })
 
         if (existing) {
-          return res.status(409).json({ message: 'Profile already exists.' })
+          return sendError(res, {
+            statusCode: 409,
+            code: 'PROFILE_EXISTS',
+            message: 'Profile already exists.',
+          }, 'PROFILE_EXISTS', 'Profile already exists.')
         }
 
         const profile = await prisma.profile.create({
           data: buildProfilePayload(req.body, req.auth.userId),
         })
 
-        return res.status(201).json(profile)
+        return sendCreated(res, profile)
       } catch (error) {
         // fall through to in-memory storage
       }
     }
 
     if (findMemoryProfile(req.auth.userId)) {
-      return res.status(409).json({ message: 'Profile already exists.' })
+      return sendError(res, {
+        statusCode: 409,
+        code: 'PROFILE_EXISTS',
+        message: 'Profile already exists.',
+      }, 'PROFILE_EXISTS', 'Profile already exists.')
     }
 
     const profile = buildProfilePayload(req.body, req.auth.userId)
@@ -260,9 +299,9 @@ async function createProfile(req, res) {
       ...store,
       profiles: [...store.profiles, profile],
     }))
-    return res.status(201).json(profile)
+    return sendCreated(res, profile)
   } catch (error) {
-    return res.status(500).json({ message: 'Unable to create profile.', error: error.message })
+    return sendError(res, error, 'PROFILE_CREATE_FAILED', 'Unable to create profile.')
   }
 }
 
@@ -270,7 +309,12 @@ async function updateProfile(req, res) {
   try {
     const errors = validateProfilePayload(req.body)
     if (Object.keys(errors).length > 0) {
-      return res.status(400).json({ message: 'Invalid profile data.', errors })
+      return sendError(res, {
+        statusCode: 400,
+        code: 'PROFILE_VALIDATION_FAILED',
+        message: 'Invalid profile data.',
+        details: errors,
+      }, 'PROFILE_VALIDATION_FAILED', 'Invalid profile data.')
     }
 
     if (prisma) {
@@ -280,7 +324,11 @@ async function updateProfile(req, res) {
         })
 
         if (!existing) {
-          return res.status(404).json({ message: 'Profile not found.' })
+          return sendError(res, {
+            statusCode: 404,
+            code: 'PROFILE_NOT_FOUND',
+            message: 'Profile not found.',
+          }, 'PROFILE_NOT_FOUND', 'Profile not found.')
         }
 
         const profile = await prisma.profile.update({
@@ -288,7 +336,7 @@ async function updateProfile(req, res) {
           data: buildProfilePayload(req.body, req.auth.userId),
         })
 
-        return res.json(profile)
+        return sendSuccess(res, profile)
       } catch (error) {
         // fall through to in-memory storage
       }
@@ -296,7 +344,11 @@ async function updateProfile(req, res) {
 
     const existing = findMemoryProfile(req.auth.userId)
     if (!existing) {
-      return res.status(404).json({ message: 'Profile not found.' })
+      return sendError(res, {
+        statusCode: 404,
+        code: 'PROFILE_NOT_FOUND',
+        message: 'Profile not found.',
+      }, 'PROFILE_NOT_FOUND', 'Profile not found.')
     }
 
     const updatedProfile = {
@@ -311,9 +363,9 @@ async function updateProfile(req, res) {
       ),
     }))
 
-    return res.json(updatedProfile)
+    return sendSuccess(res, updatedProfile)
   } catch (error) {
-    return res.status(500).json({ message: 'Unable to update profile.', error: error.message })
+    return sendError(res, error, 'PROFILE_UPDATE_FAILED', 'Unable to update profile.')
   }
 }
 
@@ -326,14 +378,18 @@ async function deleteProfile(req, res) {
         })
 
         if (!existing) {
-          return res.status(404).json({ message: 'Profile not found.' })
+          return sendError(res, {
+            statusCode: 404,
+            code: 'PROFILE_NOT_FOUND',
+            message: 'Profile not found.',
+          }, 'PROFILE_NOT_FOUND', 'Profile not found.')
         }
 
         await prisma.profile.delete({
           where: { clerkUserId: req.auth.userId },
         })
 
-        return res.status(204).send()
+        return sendNoContent(res)
       } catch (error) {
         // fall through to in-memory storage
       }
@@ -341,16 +397,20 @@ async function deleteProfile(req, res) {
 
     const existing = findMemoryProfile(req.auth.userId)
     if (!existing) {
-      return res.status(404).json({ message: 'Profile not found.' })
+      return sendError(res, {
+        statusCode: 404,
+        code: 'PROFILE_NOT_FOUND',
+        message: 'Profile not found.',
+      }, 'PROFILE_NOT_FOUND', 'Profile not found.')
     }
 
     updateLocalStore((store) => ({
       ...store,
       profiles: store.profiles.filter((profile) => profile.clerkUserId !== req.auth.userId),
     }))
-    return res.status(204).send()
+    return sendNoContent(res)
   } catch (error) {
-    return res.status(500).json({ message: 'Unable to delete profile.', error: error.message })
+    return sendError(res, error, 'PROFILE_DELETE_FAILED', 'Unable to delete profile.')
   }
 }
 

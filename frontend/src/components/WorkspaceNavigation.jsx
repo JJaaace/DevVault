@@ -4,6 +4,8 @@ const navigationItems = [
   { to: '/dashboard', label: 'Dashboard', end: true },
   { to: '/projects', label: 'Projects' },
   { to: '/skills', label: 'Skills' },
+  { to: '/inside-vault', label: 'Inside the Vault' },
+  { to: '/resume-workspace', label: 'Resume' },
   { to: '/certifications', label: 'Certifications' },
   { to: '/goals', label: 'Goals' },
   { to: '/profile', label: 'Profile' },

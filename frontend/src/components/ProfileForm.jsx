@@ -157,7 +157,7 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
           {uploadError ? <p className="mt-2 text-sm text-[#b83a1c]">{uploadError}</p> : null}
           {errors.profileImageUrl ? <p className="mt-2 text-sm text-[#b83a1c]">{errors.profileImageUrl}</p> : null}
           {isImageSource(imagePreview) ? (
-            <div className="mt-3 flex items-center gap-3 rounded-[1.15rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] p-3">
+            <div className="mt-3 flex items-center gap-3 rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] p-3">
               <img src={imagePreview} alt="Profile preview" className="h-14 w-14 rounded-2xl object-cover" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-[var(--color-text)]">Image ready</p>

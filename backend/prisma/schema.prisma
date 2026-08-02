@@ -34,6 +34,7 @@ model Profile {
   githubUrl         String?
   linkedinUrl       String?
   websiteUrl        String?
+  githubLastSyncedAt DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -42,14 +43,27 @@ model Project {
   id                  Int            @id @default(autoincrement())
   ownerClerkUserId     String
   owner                User           @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
+  displayOrder         Int            @default(0)
   title                String
   description          String
   githubUrl            String?
+  githubRepoId         Int?
+  githubFullName       String?
+  githubDescription    String?
+  githubStars          Int?
+  githubForks          Int?
+  githubLanguages      String[]       @default([])
+  githubTopics         String[]       @default([])
+  githubHomepage       String?
+  githubUpdatedAt      DateTime?
+  githubPushedAt       DateTime?
+  githubArchivedAt     DateTime?
   liveDemoUrl          String?
   bannerImageUrl       String?
+  accentTone           String?
   techStack            String[]       @default([])
+  keyFeatures          String[]       @default([])
   status               ProjectStatus  @default(PLANNING)
-  completionPercentage Int           @default(0)
   dateStarted          DateTime?
   targetCompletion     DateTime?
   challenges           String?
@@ -68,9 +82,13 @@ model Skill {
   ownerClerkUserId    String
   owner               User                 @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
   name                String
+  technologyKey       String?
   category            String
   experienceLevel     SkillExperienceLevel
   percentage          Int                  @default(0)
+  yearsExperience     Int?
+  firstUsedYear       Int?
+  projectsBuilt       Int?
   color               String
   lastUsed            DateTime?
   notes               String?
@@ -95,13 +113,14 @@ model SkillProject {
 
 enum ProjectStatus {
   PLANNING
-  IN_PROGRESS
+  BUILDING
   COMPLETED
   ARCHIVED
 }
 
 enum SkillExperienceLevel {
   BEGINNER
+  ADVANCED_BEGINNER
   INTERMEDIATE
   ADVANCED
   EXPERT

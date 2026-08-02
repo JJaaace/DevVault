@@ -1,9 +1,10 @@
 const express = require('express')
+const { sendSuccess } = require('../utils/http')
 
 const router = express.Router()
 
 router.get('/', (req, res) => {
-  res.json({
+  return sendSuccess(res, {
     message: 'Users endpoint is ready for future authentication and profile work.',
   })
 })

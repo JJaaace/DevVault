@@ -38,10 +38,6 @@ function buildProjectSummary(project) {
     parts.push(project.status.replace(/_/g, ' ').toLowerCase())
   }
 
-  if (project.completionPercentage !== null && project.completionPercentage !== undefined && project.completionPercentage !== '') {
-    parts.push(`${project.completionPercentage}% complete`) 
-  }
-
   if (project.targetCompletion) {
     parts.push(`target ${formatDate(project.targetCompletion)}`)
   }
@@ -60,8 +56,12 @@ function buildSkillSummary(skill) {
     parts.push(skill.experienceLevel.toLowerCase())
   }
 
-  if (skill.percentage !== null && skill.percentage !== undefined && skill.percentage !== '') {
-    parts.push(`${skill.percentage}% complete`)
+  if (skill.yearsExperience !== null && skill.yearsExperience !== undefined && skill.yearsExperience !== '') {
+    parts.push(`${skill.yearsExperience}y experience`)
+  }
+
+  if (skill.projectsBuilt !== null && skill.projectsBuilt !== undefined && skill.projectsBuilt !== '') {
+    parts.push(`${skill.projectsBuilt} projects`)
   }
 
   return parts.join(' · ')
@@ -86,7 +86,14 @@ export function buildResumeMarkdown(profile, projects = [], skills = []) {
   ])
 
   const sortedProjects = [...projects].sort((left, right) => new Date(right.updatedAt || right.createdAt) - new Date(left.updatedAt || left.createdAt))
-  const sortedSkills = [...skills].sort((left, right) => Number(right.percentage || 0) - Number(left.percentage || 0))
+  const sortedSkills = [...skills].sort((left, right) => {
+    const yearsDelta = Number(right.yearsExperience || 0) - Number(left.yearsExperience || 0)
+    if (yearsDelta !== 0) {
+      return yearsDelta
+    }
+
+    return Number(right.projectsBuilt || 0) - Number(left.projectsBuilt || 0)
+  })
 
   const sections = [
     `# ${fullName}`,

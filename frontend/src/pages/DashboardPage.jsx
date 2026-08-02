@@ -1,6 +1,7 @@
 import { useAuth, useUser } from '@clerk/clerk-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { toast } from 'sonner'
 import { authenticatedRequest } from '../lib/api'
 import { ProfileCompletionCard } from '../components/ProfileCompletionCard'
 import { readStoredProfile, saveStoredProfile } from '../lib/profileStorage'
@@ -10,13 +11,10 @@ import {
   buildActivitySeries,
   buildCertificationsOverview,
   buildHeroDeadline,
-  buildHeroFocus,
   buildHeroProgress,
   buildHeroQuickActions,
   buildHeroQuickStats,
   buildInternshipTracker,
-  buildLearningGoals,
-  buildOnboardingChecklist,
   buildProjectProgressSummary,
   buildRecentActivity,
   buildSkillOverviewSummary,
@@ -27,6 +25,8 @@ import {
 import { ProgressRing } from '../components/dashboard/ProgressRing'
 import { WorkspaceHero } from '../components/dashboard/WorkspaceHero'
 import { WorkspaceWidget } from '../components/dashboard/WorkspaceWidget'
+import { getProjectStatusMeta } from '../lib/projectUtils'
+import { fetchWorkspaceResume, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
 
 export function DashboardPage() {
   const { user } = useUser()
@@ -34,80 +34,158 @@ export function DashboardPage() {
   const [profile, setProfile] = useState(null)
   const [projects, setProjects] = useState([])
   const [skills, setSkills] = useState([])
+  const [insights, setInsights] = useState([])
+  const [resume, setResume] = useState(null)
+  const [uploadingResume, setUploadingResume] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const lastGitHubSyncAtRef = useRef(null)
+  const resumeInputRef = useRef(null)
 
-  useEffect(() => {
-    async function loadWorkspace() {
-      const cachedProfile = readStoredProfile()
+  const refreshWorkspace = useCallback(async () => {
+    const cachedProfile = readStoredProfile()
 
-      if (cachedProfile) {
-        setProfile(cachedProfile)
-        saveStoredProfile(cachedProfile)
-      }
-
-      const results = await Promise.allSettled([
-        authenticatedRequest('/api/profile', {}, getToken),
-        fetchProjects(getToken),
-        fetchSkills(getToken),
-      ])
-
-      const messages = []
-
-      const profileResult = results[0]
-      if (profileResult.status === 'fulfilled') {
-        const nextProfile = profileResult.value || cachedProfile
-        setProfile(nextProfile)
-        if (nextProfile) {
-          saveStoredProfile(nextProfile)
-        }
-      } else if (profileResult.reason?.message?.includes('404')) {
-        setProfile(cachedProfile || null)
-      } else {
-        messages.push(profileResult.reason?.message || 'Unable to load profile.')
-      }
-
-      const projectResult = results[1]
-      if (projectResult.status === 'fulfilled') {
-        setProjects(Array.isArray(projectResult.value) ? projectResult.value : [])
-      } else {
-        messages.push(projectResult.reason?.message || 'Unable to load projects.')
-      }
-
-      const skillResult = results[2]
-      if (skillResult.status === 'fulfilled') {
-        setSkills(Array.isArray(skillResult.value) ? skillResult.value : [])
-      } else {
-        messages.push(skillResult.reason?.message || 'Unable to load skills.')
-      }
-
-      setError(messages[0] || '')
-      setLoading(false)
+    if (cachedProfile) {
+      setProfile(cachedProfile)
+      lastGitHubSyncAtRef.current = cachedProfile.githubLastSyncedAt || lastGitHubSyncAtRef.current
+      saveStoredProfile(cachedProfile)
     }
 
-    loadWorkspace().catch((err) => {
-      setError(err.message || 'Unable to load workspace.')
-      setLoading(false)
-    })
+    const results = await Promise.allSettled([
+      authenticatedRequest('/api/profile', {}, getToken),
+      fetchProjects(getToken),
+      fetchSkills(getToken),
+      authenticatedRequest('/api/dashboard', {}, getToken),
+      fetchWorkspaceResume(getToken),
+    ])
+
+    const messages = []
+
+    const profileResult = results[0]
+    if (profileResult.status === 'fulfilled') {
+      const nextProfile = profileResult.value || cachedProfile
+      const previousSyncAt = lastGitHubSyncAtRef.current
+      const nextSyncAt = nextProfile?.githubLastSyncedAt || null
+
+      setProfile(nextProfile)
+      if (nextProfile) {
+        saveStoredProfile(nextProfile)
+      }
+
+      if (previousSyncAt && nextSyncAt && previousSyncAt !== nextSyncAt) {
+        toast.success('GitHub synchronization completed.')
+      }
+
+      lastGitHubSyncAtRef.current = nextSyncAt || previousSyncAt || null
+    } else if (profileResult.reason?.message?.includes('404')) {
+      setProfile(cachedProfile || null)
+    } else {
+      messages.push(profileResult.reason?.message || 'Unable to load profile.')
+    }
+
+    const projectResult = results[1]
+    if (projectResult.status === 'fulfilled') {
+      setProjects(Array.isArray(projectResult.value) ? projectResult.value : [])
+    } else {
+      messages.push(projectResult.reason?.message || 'Unable to load projects.')
+    }
+
+    const skillResult = results[2]
+    if (skillResult.status === 'fulfilled') {
+      setSkills(Array.isArray(skillResult.value) ? skillResult.value : [])
+    } else {
+      messages.push(skillResult.reason?.message || 'Unable to load skills.')
+    }
+
+    const insightsResult = results[3]
+    if (insightsResult.status === 'fulfilled') {
+      setInsights(Array.isArray(insightsResult.value?.insights) ? insightsResult.value.insights : [])
+    } else {
+      setInsights([])
+    }
+
+    const resumeResult = results[4]
+    if (resumeResult.status === 'fulfilled') {
+      setResume(resumeResult.value || null)
+    }
+
+    setError(messages[0] || '')
+    setLoading(false)
   }, [getToken])
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      refreshWorkspace().catch((err) => {
+        setError(err.message || 'Unable to load workspace.')
+        setLoading(false)
+      })
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [refreshWorkspace])
+
+  const handleResumeUploadClick = () => {
+    resumeInputRef.current?.click()
+  }
+
+  const handleResumeFileChange = async (event) => {
+    const [file] = Array.from(event.target.files || [])
+    if (!file) {
+      return
+    }
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Please upload a PDF resume.')
+      event.target.value = ''
+      return
+    }
+
+    setUploadingResume(true)
+    try {
+      const nextResume = await uploadWorkspaceResume(file, getToken)
+      setResume(nextResume)
+      toast.success('Resume uploaded successfully.')
+    } catch (uploadError) {
+      toast.error(uploadError.message || 'Unable to upload resume.')
+    } finally {
+      setUploadingResume(false)
+      event.target.value = ''
+    }
+  }
+
+  const hasResume = Boolean(resume?.uploaded && resume?.fileUrl)
+  const resumeLastUpdated = resume?.lastUpdated
+    ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(resume.lastUpdated))
+    : 'N/A'
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      refreshWorkspace().catch(() => {
+        // background refresh failures should not interrupt the UI
+      })
+    }, 180000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [refreshWorkspace])
 
   const activityEntries = buildRecentActivity(profile, projects, skills)
   const activitySeries = buildActivitySeries(activityEntries)
   const workspaceStats = buildWorkspaceStats(profile, projects, skills, activityEntries)
   const projectSummary = buildProjectProgressSummary(projects)
   const skillSummary = buildSkillOverviewSummary(skills)
-  const learningGoals = buildLearningGoals(profile, projects, skills)
   const upcomingDeadlines = buildUpcomingDeadlines(projects)
   const certifications = buildCertificationsOverview()
   const internshipStages = buildInternshipTracker()
   const userName = user?.firstName || profile?.firstName || 'there'
   const greeting = getTimeGreeting()
-  const heroFocus = buildHeroFocus(profile, projects, skills)
   const heroDeadline = buildHeroDeadline(projects)
   const heroProgress = buildHeroProgress(profile, projects, skills)
-  const heroQuickStats = buildHeroQuickStats(profile, projects, skills, activityEntries)
+  const heroQuickStats = buildHeroQuickStats(profile, projects, activityEntries)
   const heroQuickActions = buildHeroQuickActions(profile, projects, skills, heroDeadline)
-  const onboardingChecklist = buildOnboardingChecklist(profile, projects, skills)
 
   return (
     <div className="page-shell page-stack gap-4 pb-12">
@@ -116,11 +194,11 @@ export function DashboardPage() {
         userName={userName}
         activitySeries={activitySeries}
         currentStreak={workspaceStats.currentStreak}
-        currentFocus={heroFocus}
         upcomingDeadline={heroDeadline}
         quickStats={heroQuickStats}
         quickActions={heroQuickActions}
         progress={heroProgress}
+        syncState={profile?.githubSyncState}
       />
 
       {error ? (
@@ -129,8 +207,8 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
-        <div className="flex min-w-0 flex-col gap-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)] xl:items-stretch">
+        <div className="flex min-w-0 flex-col gap-4 xl:h-full">
           <ProfileCompletionCard
             profile={profile}
             actionTo={profile ? '/profile/edit' : '/profile'}
@@ -139,44 +217,57 @@ export function DashboardPage() {
 
           <WorkspaceWidget
             eyebrow="Projects"
-            title="Projects progress"
-            description={projects.length ? 'Track momentum across your live project portfolio.' : 'Start with one project and this card becomes your launch command center.'}
+            title="Project statuses"
+            description={projects.length ? 'Track lifecycle stages across your portfolio.' : 'Start with one project and this card becomes your launch command center.'}
             action={<Link to="/projects" className="button-secondary px-4 py-2 text-sm">Open projects</Link>}
           >
             {loading ? (
               <div className="text-sm text-[var(--color-text-soft)]">Loading projects...</div>
             ) : projects.length ? (
               <div className="space-y-4">
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-                  <ProgressRing value={projectSummary.average} label="avg" color="#ea8b21" size={112}>
-                    <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{projectSummary.average}%</span>
-                  </ProgressRing>
-                  <div className="grid flex-1 gap-3">
-                    {projectSummary.topProjects.map((project) => (
-                      <div key={project.id} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {[
+                    ['PLANNING', projectSummary.statusCounts.PLANNING],
+                    ['BUILDING', projectSummary.statusCounts.BUILDING],
+                    ['COMPLETED', projectSummary.statusCounts.COMPLETED],
+                    ['ARCHIVED', projectSummary.statusCounts.ARCHIVED],
+                  ].map(([status, count]) => {
+                    const meta = getProjectStatusMeta(status)
+                    return (
+                      <div key={status} className="rounded-[1.2rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className={`inline-flex ${meta.badgeClass}`}>{meta.label}</span>
+                          <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{count}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="grid gap-3">
+                  {projectSummary.recentProjects.map((project) => {
+                    const meta = getProjectStatusMeta(project.status)
+                    return (
+                      <div key={project.id} className="rounded-[1.2rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="font-medium text-[var(--color-text)]">{project.title}</p>
-                            <p className="text-xs text-[var(--color-text-soft)]">{project.status.replace('_', ' ')}</p>
+                            <p className="text-xs text-[var(--color-text-soft)]">Recently updated</p>
                           </div>
-                          <span className="text-sm font-semibold text-[var(--color-brand-ink)]">{project.completionPercentage}%</span>
-                        </div>
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
-                          <div className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16]" style={{ width: `${project.completionPercentage}%` }} />
+                          <span className={`inline-flex ${meta.badgeClass}`}>{meta.label}</span>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <span className="chip chip--accent">{workspaceStats.projectCount} projects</span>
                   <span className="chip">{projectSummary.activeProjects.length} active</span>
-                  <span className="chip">{projects.filter((project) => project.status === 'COMPLETED').length} completed</span>
+                  <span className="chip">{projectSummary.statusCounts.COMPLETED} completed</span>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <p className="text-sm text-[var(--color-text-soft)]">No projects yet. Create one to start tracking progress, deadlines, and launch momentum.</p>
+                <p className="text-sm text-[var(--color-text-soft)]">No projects yet. Create one to start tracking statuses, deadlines, and launch momentum.</p>
                 <Link to="/projects/new" className="button-primary w-fit px-4 py-2 text-sm">Create your first project</Link>
               </div>
             )}
@@ -198,7 +289,7 @@ export function DashboardPage() {
                   </ProgressRing>
                   <div className="flex flex-1 flex-col gap-3">
                     {skillSummary.topSkills.map((skill) => (
-                      <div key={skill.id} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+                      <div key={skill.id} className="rounded-[1.2rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="font-medium text-[var(--color-text)]">{skill.name}</p>
@@ -237,7 +328,7 @@ export function DashboardPage() {
             {activityEntries.length ? (
               <div className="space-y-3">
                 {activityEntries.map((entry) => (
-                  <div key={`${entry.type}-${entry.label}-${entry.date.toISOString()}`} className="flex gap-3 rounded-[1.15rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+                  <div key={`${entry.type}-${entry.label}-${entry.date.toISOString()}`} className="flex gap-3 rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
                     <div className="mt-1 h-2.5 w-2.5 rounded-full bg-[linear-gradient(135deg,#f9c96e,#ea8b21,#d96a16)] shadow-[0_0_0_4px_rgba(234,139,33,0.08)]" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
@@ -259,30 +350,33 @@ export function DashboardPage() {
           </WorkspaceWidget>
         </div>
 
-        <div className="flex min-w-0 flex-col gap-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+        <div className="flex min-w-0 flex-col gap-4 xl:h-full">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 xl:flex-1 xl:grid-rows-[auto_auto_auto_1fr]">
             <WorkspaceWidget
-              eyebrow="Onboarding"
-              title="Workspace checklist"
-              description="A short path to get your workspace ready for recruiting and sharing."
+              eyebrow="Intelligence"
+              title="Actionable insights"
+              description="Prioritized recommendations generated from your current workspace data."
             >
-              <div className="space-y-3">
-                {onboardingChecklist.map((step) => (
-                  <Link
-                    key={step.label}
-                    to={step.href}
-                    className="flex items-center justify-between gap-3 rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3 transition hover:-translate-y-0.5 hover:border-[rgba(234,139,33,0.2)] hover:bg-white"
-                  >
-                    <div>
-                      <p className="font-medium text-[var(--color-text)]">{step.label}</p>
-                      <p className="text-xs text-[var(--color-text-soft)]">{step.note}</p>
+              {insights.length ? (
+                <div className="space-y-3">
+                  {insights.slice(0, 4).map((insight) => (
+                    <div key={insight.id} className="rounded-[1.2rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-medium text-[var(--color-text)]">{insight.title}</p>
+                        <span className={`chip ${insight.priority === 'high' ? 'chip--accent' : ''}`.trim()}>{insight.priority}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--color-text-soft)]">{insight.description}</p>
+                      {insight.cta?.href ? (
+                        <Link to={insight.cta.href} className="mt-3 inline-flex text-xs font-semibold text-[var(--color-brand-ink)]">
+                          {insight.cta.label || 'Open'}
+                        </Link>
+                      ) : null}
                     </div>
-                    <span className={`chip ${step.done ? 'chip--accent' : ''}`.trim()}>
-                      {step.done ? 'Done' : 'Next'}
-                    </span>
-                  </Link>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--color-text-soft)]">No insights yet. Add profile, projects, and skills to unlock recommendations.</p>
+              )}
             </WorkspaceWidget>
 
             <WorkspaceWidget
@@ -290,18 +384,25 @@ export function DashboardPage() {
               title="Certifications"
               description="Keep badges, renewals, and credentials ready for recruiter review."
             >
-              <div className="space-y-4">
+              <div className="certifications-grid">
                 {certifications.map((item) => (
-                  <div key={item.name} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+                  <div key={item.name} className="certification-card">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="font-medium text-[var(--color-text)]">{item.name}</p>
-                        <p className="text-xs text-[var(--color-text-soft)]">{item.note}</p>
+                        <p className="text-xs text-[var(--color-text-soft)]">{item.organization}</p>
+                        {item.earnedDate ? (
+                          <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+                            Earned {new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(new Date(item.earnedDate))}
+                          </p>
+                        ) : null}
                       </div>
-                      <span className="text-sm font-semibold text-[var(--color-brand-ink)]">{item.progress}%</span>
+                      <span className="text-2xl" aria-hidden="true">{item.logo || '🏅'}</span>
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
-                      <div className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16]" style={{ width: `${item.progress}%` }} />
+                    <div className="mt-4">
+                      <span className={`certification-status ${item.status === 'EARNED' ? 'certification-status--earned' : item.status === 'IN_PROGRESS' ? 'certification-status--in-progress' : 'certification-status--planned'}`.trim()}>
+                        {item.status === 'EARNED' ? '✓ Earned' : item.status === 'IN_PROGRESS' ? '📖 In Progress' : '🎯 Planned'}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -310,12 +411,43 @@ export function DashboardPage() {
 
             <WorkspaceWidget
               eyebrow="Career"
+              title="Resume"
+              description="Manage your active recruiter-facing resume without leaving the workspace."
+            >
+              <div className="rounded-[1.2rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-4">
+                <p className="text-sm font-medium text-[var(--color-text)]">{hasResume ? (resume.fileName || 'Resume.pdf') : 'No resume uploaded.'}</p>
+                <p className="mt-1 text-xs text-[var(--color-text-soft)]">Last updated {resumeLastUpdated}</p>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={handleResumeUploadClick} disabled={uploadingResume} className="button-primary px-3 py-2 text-xs disabled:opacity-60">
+                    {uploadingResume ? 'Uploading...' : hasResume ? 'Replace Resume' : 'Upload Resume'}
+                  </button>
+                  {hasResume ? (
+                    <>
+                      <a href={resume.fileUrl} target="_blank" rel="noreferrer" className="button-secondary px-3 py-2 text-xs">
+                        View Resume
+                      </a>
+                      <a href={resume.fileUrl} download className="button-secondary px-3 py-2 text-xs">
+                        Download Resume
+                      </a>
+                    </>
+                  ) : null}
+                  <Link to="/resume-workspace" className="button-secondary px-3 py-2 text-xs">Open Resume Page</Link>
+                </div>
+
+                <input ref={resumeInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleResumeFileChange} />
+              </div>
+            </WorkspaceWidget>
+
+            <WorkspaceWidget
+              eyebrow="Career"
               title="Internship tracker"
               description="A clean pipeline for application flow and momentum."
+              className="xl:h-full"
             >
               <div className="space-y-4">
                 {internshipStages.map((stage, index) => (
-                  <div key={stage.stage} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+                  <div key={stage.stage} className="rounded-[1.2rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="font-medium text-[var(--color-text)]">{stage.stage}</p>
@@ -333,29 +465,6 @@ export function DashboardPage() {
           </div>
 
           <WorkspaceWidget
-            eyebrow="Focus"
-            title="Learning goals"
-            description="A simple, motivating view of where to put energy next."
-          >
-            <div className="space-y-4">
-              {learningGoals.map((goal) => (
-                <div key={goal.title} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-[var(--color-text)]">{goal.title}</p>
-                      <p className="text-xs text-[var(--color-text-soft)]">{goal.note}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-[var(--color-brand-ink)]">{goal.progress}%</span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16]" style={{ width: `${goal.progress}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </WorkspaceWidget>
-
-          <WorkspaceWidget
             eyebrow="Planning"
             title="Upcoming deadlines"
             description="Keep the next target date visible so projects keep moving."
@@ -363,24 +472,20 @@ export function DashboardPage() {
             {upcomingDeadlines.length ? (
               <div className="space-y-3">
                 {upcomingDeadlines.map((project) => (
-                  <div key={project.id} className="rounded-[1.2rem] border border-[rgba(126,89,45,0.12)] bg-[rgba(255,255,255,0.72)] px-4 py-3">
+                  <div key={project.id} className="rounded-[1.2rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="font-medium text-[var(--color-text)]">{project.title}</p>
                         <p className="text-xs text-[var(--color-text-soft)]">Target {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(project.deadline)}</p>
                       </div>
-                      <span className="chip chip--accent">{project.completionPercentage}%</span>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(126,89,45,0.1)]">
-                      <div className="h-full rounded-full bg-gradient-to-r from-[#f9c96e] via-[#ea8b21] to-[#d96a16]" style={{ width: `${project.completionPercentage}%` }} />
+                      <span className={`inline-flex ${getProjectStatusMeta(project.status).badgeClass}`}>{getProjectStatusMeta(project.status).label}</span>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <p className="text-sm text-[var(--color-text-soft)]">No target dates yet. Set a due date on a project to populate this planning lane.</p>
-                <Link to="/projects" className="button-primary w-fit px-4 py-2 text-sm">Set a project deadline</Link>
+                <p className="text-sm text-[var(--color-text-soft)]">No target dates yet. Use the deadline card above to set a due date and populate this planning lane.</p>
               </div>
             )}
           </WorkspaceWidget>

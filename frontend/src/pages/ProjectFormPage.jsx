@@ -70,6 +70,12 @@ export function ProjectFormPage() {
       toast.success(isEditing ? 'Project updated successfully.' : 'Project created successfully.')
       navigate('/projects')
     } catch (err) {
+      if (err?.details && typeof err.details === 'object') {
+        setErrors(err.details)
+        toast.error('Please fix the highlighted fields and try again.')
+        return
+      }
+
       const parsed = parseErrorPayload(err.message || '')
       if (parsed.errors) {
         setErrors(parsed.errors)

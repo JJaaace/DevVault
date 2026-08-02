@@ -8,12 +8,36 @@ function normalizeGitHubUsername(value) {
     return ''
   }
 
-  const match = trimmed.match(/github\.com\/(?:[^/]+\/)?([^/]+)/i)
-  if (match?.[1]) {
-    return match[1].replace(/\.$/, '')
+  const sshMatch = trimmed.match(/github\.com:([^/]+)\//i)
+  if (sshMatch?.[1]) {
+    return sshMatch[1].replace(/\.$/, '')
   }
 
-  return trimmed.replace(/^@/, '').replace(/\/$/, '')
+  try {
+    const parsedUrl = new URL(trimmed)
+    if (parsedUrl.hostname.toLowerCase().includes('github.com')) {
+      const segments = parsedUrl.pathname.split('/').filter(Boolean)
+      if (segments[0] === 'users' || segments[0] === 'orgs') {
+        return (segments[1] || '').replace(/\.$/, '')
+      }
+
+      return (segments[0] || '').replace(/\.$/, '')
+    }
+  } catch {
+    // fall through to path parsing
+  }
+
+  const pathMatch = trimmed.match(/github\.com\/(.+)$/i)
+  if (pathMatch?.[1]) {
+    const segments = pathMatch[1].split('/').filter(Boolean)
+    if (segments[0] === 'users' || segments[0] === 'orgs') {
+      return (segments[1] || '').replace(/\.$/, '')
+    }
+
+    return (segments[0] || '').replace(/\.$/, '')
+  }
+
+  return trimmed.replace(/^@/, '').replace(/\/$/, '').replace(/\.$/, '')
 }
 
 async function fetchGitHubJson(url) {
@@ -108,7 +132,6 @@ export function buildGitHubProjectDrafts(repos = []) {
       bannerImageUrl: repo.owner?.avatar_url || '',
       techStack: [repo.language].filter(Boolean),
       status: repo.archived ? 'ARCHIVED' : 'PLANNING',
-      completionPercentage: repo.archived ? 100 : 0,
       dateStarted: repo.created_at || null,
       targetCompletion: null,
       challenges: '',

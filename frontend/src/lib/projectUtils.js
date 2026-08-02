@@ -1,6 +1,6 @@
 export const PROJECT_STATUS_OPTIONS = [
   { value: 'PLANNING', label: 'Planning' },
-  { value: 'IN_PROGRESS', label: 'In Progress' },
+  { value: 'BUILDING', label: 'Building' },
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'ARCHIVED', label: 'Archived' },
 ]
@@ -8,11 +8,11 @@ export const PROJECT_STATUS_OPTIONS = [
 const statusMeta = {
   PLANNING: {
     label: 'Planning',
-    badgeClass: 'chip',
-    toneClass: 'text-[var(--color-text-soft)]',
+    badgeClass: 'chip border-[rgba(214,160,89,0.24)] bg-[rgba(64,47,31,0.72)] text-[#f2c98f]',
+    toneClass: 'text-[#dcb17a]',
   },
-  IN_PROGRESS: {
-    label: 'In Progress',
+  BUILDING: {
+    label: 'Building',
     badgeClass: 'chip chip--accent',
     toneClass: 'text-[var(--color-brand-ink)]',
   },
