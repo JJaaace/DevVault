@@ -27,12 +27,26 @@ function getProjectStatusCounts(projects = []) {
 
 function getTopSkills(skills = [], limit = 5) {
   return [...skills]
-    .sort((left, right) => Number(right.percentage || 0) - Number(left.percentage || 0))
+    .sort((left, right) => {
+      const yearsDelta = Number(right.yearsExperience || 0) - Number(left.yearsExperience || 0)
+      if (yearsDelta !== 0) {
+        return yearsDelta
+      }
+
+      const projectsDelta = Number(right.projectsBuilt || 0) - Number(left.projectsBuilt || 0)
+      if (projectsDelta !== 0) {
+        return projectsDelta
+      }
+
+      return Number(right.percentage || 0) - Number(left.percentage || 0)
+    })
     .slice(0, limit)
     .map((skill) => ({
       id: skill.id,
       name: skill.name,
       category: skill.category,
+      yearsExperience: Number(skill.yearsExperience || 0),
+      projectsBuilt: Number(skill.projectsBuilt || 0),
       percentage: Number(skill.percentage || 0),
       level: skill.experienceLevel,
     }))

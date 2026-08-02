@@ -1,5 +1,10 @@
 const { sendSuccess, sendNoContent, sendError } = require('../utils/http')
-const { getResumeMetadata, saveResumePdf, removeResume } = require('../services/resumeService')
+const {
+  getResumeMetadata,
+  getResumeFileInfo,
+  saveResumePdf,
+  removeResume,
+} = require('../services/resumeService')
 
 async function getResume(req, res) {
   try {
@@ -19,6 +24,15 @@ async function uploadResume(req, res) {
   }
 }
 
+async function getResumeFile(req, res) {
+  try {
+    const fileInfo = await getResumeFileInfo(req.auth.userId)
+    return res.download(fileInfo.filePath, fileInfo.fileName)
+  } catch (error) {
+    return sendError(res, error, 'RESUME_FILE_GET_FAILED', 'Unable to load resume file.')
+  }
+}
+
 async function deleteResume(req, res) {
   try {
     await removeResume(req.auth.userId)
@@ -30,6 +44,7 @@ async function deleteResume(req, res) {
 
 module.exports = {
   getResume,
+  getResumeFile,
   uploadResume,
   deleteResume,
 }

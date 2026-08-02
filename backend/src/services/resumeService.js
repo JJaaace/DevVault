@@ -81,13 +81,31 @@ function buildResumeResponse(clerkUserId, metadataEntry) {
     fileName: metadataEntry.fileName,
     lastUpdated: metadataEntry.updatedAt,
     byteSize: metadataEntry.byteSize,
-    fileUrl: `/resume-files/${encodeURIComponent(clerkUserId)}/resume.pdf?v=${version}`,
+    fileUrl: `/api/resume/file?v=${version}`,
   }
 }
 
 async function getResumeMetadata(clerkUserId) {
   const store = readMetadataStore()
   return buildResumeResponse(clerkUserId, store[clerkUserId] || null)
+}
+
+async function getResumeFileInfo(clerkUserId) {
+  const store = readMetadataStore()
+  const metadataEntry = store[clerkUserId]
+  if (!metadataEntry) {
+    throw createServiceError(404, 'Resume not found.')
+  }
+
+  const filePath = getResumeFilePath(clerkUserId)
+  if (!fs.existsSync(filePath)) {
+    throw createServiceError(404, 'Resume file not found.')
+  }
+
+  return {
+    filePath,
+    fileName: metadataEntry.fileName || 'resume.pdf',
+  }
 }
 
 async function saveResumePdf(clerkUserId, payload) {
@@ -132,6 +150,7 @@ async function removeResume(clerkUserId) {
 
 module.exports = {
   getResumeMetadata,
+  getResumeFileInfo,
   saveResumePdf,
   removeResume,
 }

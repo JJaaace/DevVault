@@ -21,6 +21,21 @@ export async function fetchWorkspaceResume(getToken) {
   }
 }
 
+export async function fetchWorkspaceResumePdf(getToken) {
+  const token = await getToken()
+  const base = import.meta.env.VITE_API_BASE_URL || window.location.origin
+  const response = await fetch(new URL('/api/resume/file', base).toString(), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+
+  if (!response.ok) {
+    const rawBody = await response.text()
+    throw new Error(rawBody || 'Unable to load resume file.')
+  }
+
+  return response.blob()
+}
+
 export async function uploadWorkspaceResume(file, getToken) {
   const fileData = await new Promise((resolve, reject) => {
     const reader = new FileReader()

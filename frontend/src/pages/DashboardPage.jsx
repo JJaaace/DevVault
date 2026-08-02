@@ -26,7 +26,7 @@ import { ProgressRing } from '../components/dashboard/ProgressRing'
 import { WorkspaceHero } from '../components/dashboard/WorkspaceHero'
 import { WorkspaceWidget } from '../components/dashboard/WorkspaceWidget'
 import { getProjectStatusMeta } from '../lib/projectUtils'
-import { fetchWorkspaceResume, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
+import { fetchWorkspaceResume, fetchWorkspaceResumePdf, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
 
 export function DashboardPage() {
   const { user } = useUser()
@@ -37,6 +37,7 @@ export function DashboardPage() {
   const [insights, setInsights] = useState([])
   const [resume, setResume] = useState(null)
   const [uploadingResume, setUploadingResume] = useState(false)
+  const [resolvingResumeAction, setResolvingResumeAction] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const lastGitHubSyncAtRef = useRef(null)
@@ -155,7 +156,37 @@ export function DashboardPage() {
     }
   }
 
-  const hasResume = Boolean(resume?.uploaded && resume?.fileUrl)
+  const withResumePdf = async (callback) => {
+    setResolvingResumeAction(true)
+    try {
+      const fileBlob = await fetchWorkspaceResumePdf(getToken)
+      const blobUrl = URL.createObjectURL(fileBlob)
+      try {
+        await callback(blobUrl)
+      } finally {
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 8000)
+      }
+    } catch (error) {
+      toast.error(error.message || 'Unable to access resume.')
+    } finally {
+      setResolvingResumeAction(false)
+    }
+  }
+
+  const handleViewResume = () => withResumePdf(async (blobUrl) => {
+    window.open(blobUrl, '_blank', 'noopener,noreferrer')
+  })
+
+  const handleDownloadResume = () => withResumePdf(async (blobUrl) => {
+    const anchor = document.createElement('a')
+    anchor.href = blobUrl
+    anchor.download = resume?.fileName || 'Resume.pdf'
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+  })
+
+  const hasResume = Boolean(resume?.uploaded)
   const resumeLastUpdated = resume?.lastUpdated
     ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(resume.lastUpdated))
     : 'N/A'
@@ -424,12 +455,12 @@ export function DashboardPage() {
                   </button>
                   {hasResume ? (
                     <>
-                      <a href={resume.fileUrl} target="_blank" rel="noreferrer" className="button-secondary px-3 py-2 text-xs">
+                      <button type="button" onClick={handleViewResume} disabled={resolvingResumeAction} className="button-secondary px-3 py-2 text-xs disabled:opacity-60">
                         View Resume
-                      </a>
-                      <a href={resume.fileUrl} download className="button-secondary px-3 py-2 text-xs">
+                      </button>
+                      <button type="button" onClick={handleDownloadResume} disabled={resolvingResumeAction} className="button-secondary px-3 py-2 text-xs disabled:opacity-60">
                         Download Resume
-                      </a>
+                      </button>
                     </>
                   ) : null}
                   <Link to="/resume-workspace" className="button-secondary px-3 py-2 text-xs">Open Resume Page</Link>

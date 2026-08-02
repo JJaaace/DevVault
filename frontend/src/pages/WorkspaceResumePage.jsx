@@ -1,8 +1,8 @@
 import { useAuth } from '@clerk/clerk-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { fetchWorkspaceResume, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
+import { fetchWorkspaceResume, fetchWorkspaceResumePdf, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
 
 function formatBytes(size) {
   const bytes = Number(size || 0)
@@ -38,10 +38,37 @@ function formatDate(value) {
 export function WorkspaceResumePage() {
   const { getToken } = useAuth()
   const [resume, setResume] = useState(null)
+  const [resumePdfUrl, setResumePdfUrl] = useState('')
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [loadingPdf, setLoadingPdf] = useState(false)
   const [viewerReady, setViewerReady] = useState(false)
   const fileInputRef = useRef(null)
+
+  useEffect(() => {
+    return () => {
+      if (resumePdfUrl) {
+        URL.revokeObjectURL(resumePdfUrl)
+      }
+    }
+  }, [resumePdfUrl])
+
+  const loadResumePdf = useCallback(async () => {
+    setLoadingPdf(true)
+    try {
+      const fileBlob = await fetchWorkspaceResumePdf(getToken)
+      const blobUrl = URL.createObjectURL(fileBlob)
+      setResumePdfUrl((current) => {
+        if (current) {
+          URL.revokeObjectURL(current)
+        }
+        return blobUrl
+      })
+      return blobUrl
+    } finally {
+      setLoadingPdf(false)
+    }
+  }, [getToken])
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -56,6 +83,16 @@ export function WorkspaceResumePage() {
       try {
         const data = await fetchWorkspaceResume(getToken)
         setResume(data)
+        if (data?.uploaded) {
+          await loadResumePdf()
+        } else {
+          setResumePdfUrl((current) => {
+            if (current) {
+              URL.revokeObjectURL(current)
+            }
+            return ''
+          })
+        }
       } catch (error) {
         toast.error(error.message || 'Unable to load resume.')
       } finally {
@@ -64,7 +101,7 @@ export function WorkspaceResumePage() {
     }
 
     loadResume()
-  }, [getToken])
+  }, [getToken, loadResumePdf])
 
   const handleUploadClick = () => {
     fileInputRef.current?.click()
@@ -86,6 +123,7 @@ export function WorkspaceResumePage() {
     try {
       const updated = await uploadWorkspaceResume(file, getToken)
       setResume(updated)
+      await loadResumePdf()
       toast.success('Resume uploaded.')
     } catch (error) {
       toast.error(error.message || 'Unable to upload resume.')
@@ -95,8 +133,31 @@ export function WorkspaceResumePage() {
     }
   }
 
-  const hasResume = Boolean(resume?.uploaded && resume?.fileUrl)
-  const viewerKey = useMemo(() => `${resume?.fileUrl || 'empty'}`, [resume?.fileUrl])
+  const handleOpenResume = async () => {
+    try {
+      const url = resumePdfUrl || await loadResumePdf()
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (error) {
+      toast.error(error.message || 'Unable to open resume.')
+    }
+  }
+
+  const handleDownloadResume = async () => {
+    try {
+      const url = resumePdfUrl || await loadResumePdf()
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = resume?.fileName || 'Resume.pdf'
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+    } catch (error) {
+      toast.error(error.message || 'Unable to download resume.')
+    }
+  }
+
+  const hasResume = Boolean(resume?.uploaded)
+  const viewerKey = useMemo(() => `${resumePdfUrl || 'empty'}`, [resumePdfUrl])
 
   return (
     <div className="page-shell page-shell--wide page-stack pb-14">
@@ -127,12 +188,12 @@ export function WorkspaceResumePage() {
             </button>
             {hasResume ? (
               <>
-                <a href={resume.fileUrl} target="_blank" rel="noreferrer" className="button-secondary px-4 py-2 text-sm">
+                <button type="button" onClick={handleOpenResume} disabled={loadingPdf} className="button-secondary px-4 py-2 text-sm disabled:opacity-60">
                   Open in New Tab
-                </a>
-                <a href={resume.fileUrl} download className="button-secondary px-4 py-2 text-sm">
+                </button>
+                <button type="button" onClick={handleDownloadResume} disabled={loadingPdf} className="button-secondary px-4 py-2 text-sm disabled:opacity-60">
                   Download
-                </a>
+                </button>
               </>
             ) : null}
             <Link to="/dashboard" className="button-secondary px-4 py-2 text-sm">
@@ -146,9 +207,9 @@ export function WorkspaceResumePage() {
 
       <section className="surface-card surface-card--strong resume-viewer-shell p-4 md:p-5">
         {hasResume ? (
-          viewerReady ? (
+          viewerReady && resumePdfUrl ? (
             <div className="resume-viewer-frame-wrap">
-              <iframe key={viewerKey} src={resume.fileUrl} title="Resume PDF Viewer" className="resume-viewer-frame" />
+              <iframe key={viewerKey} src={resumePdfUrl} title="Resume PDF Viewer" className="resume-viewer-frame" />
             </div>
           ) : (
             <div className="widget-card p-6 text-sm text-[var(--color-text-soft)]">Preparing secure viewer...</div>

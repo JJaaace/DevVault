@@ -18,6 +18,7 @@ try {
 }
 
 const syncJobs = new Map()
+const MAX_FINISHED_SYNC_JOBS = 200
 
 function createSyncError(statusCode, message, details) {
   const error = new Error(message)
@@ -491,7 +492,29 @@ function updateJob(syncId, patch) {
   }
 
   syncJobs.set(syncId, next)
+
+  if (next.status === 'completed' || next.status === 'failed') {
+    pruneFinishedSyncJobs()
+  }
+
   return next
+}
+
+function pruneFinishedSyncJobs() {
+  const finishedJobs = [...syncJobs.values()]
+    .filter((job) => job.status === 'completed' || job.status === 'failed')
+    .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))
+
+  if (finishedJobs.length <= MAX_FINISHED_SYNC_JOBS) {
+    return
+  }
+
+  const keepIds = new Set(finishedJobs.slice(0, MAX_FINISHED_SYNC_JOBS).map((job) => job.syncId))
+  for (const job of finishedJobs) {
+    if (!keepIds.has(job.syncId)) {
+      syncJobs.delete(job.syncId)
+    }
+  }
 }
 
 async function runGitHubSync(syncId) {
@@ -520,11 +543,11 @@ async function runGitHubSync(syncId) {
       throw createSyncError(400, 'Add a GitHub profile URL before syncing or configure a GitHub token on the server.')
     }
 
-    const githubUser = githubToken
-      ? await fetchAuthenticatedGitHubProfile(githubToken)
-      : await fetchGitHubProfile(githubUsername, githubToken)
+    const githubUser = githubUsername
+      ? await fetchGitHubProfile(githubUsername, githubToken)
+      : await fetchAuthenticatedGitHubProfile(githubToken)
 
-    const syncSource = githubToken && githubUser?.login ? githubUser.login : githubUsername
+    const syncSource = githubUsername || githubUser?.login
     if (!syncSource) {
       throw createSyncError(400, 'Unable to resolve a GitHub username for synchronization.')
     }
