@@ -26,6 +26,17 @@ function createApiError({ message, status, statusText, code, details, body, path
   return error
 }
 
+function sanitizeErrorMessage(message, status, fallbackMessage) {
+  const normalized = String(message || '')
+
+  // Hide raw internal runtime exceptions from end users.
+  if (status >= 500 && /(cannot read properties of undefined|typeerror|referenceerror|syntaxerror)/i.test(normalized)) {
+    return fallbackMessage
+  }
+
+  return normalized || fallbackMessage
+}
+
 function wait(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
@@ -85,11 +96,16 @@ async function executeRequest(path, options = {}, token) {
     const parsedBody = parseResponseBody(rawBody, contentType)
 
     if (!response.ok) {
+      const fallbackMessage = response.status >= 500
+        ? 'Something went wrong while loading workspace data. Please try again.'
+        : `Request failed with status ${response.status}`
+
       const errorMessage =
-        parsedBody?.error?.message ||
-        parsedBody?.message ||
-        rawBody ||
-        `Request failed with status ${response.status}`
+        sanitizeErrorMessage(
+          parsedBody?.error?.message || parsedBody?.message || rawBody,
+          response.status,
+          fallbackMessage,
+        )
 
       throw createApiError({
         message: errorMessage,

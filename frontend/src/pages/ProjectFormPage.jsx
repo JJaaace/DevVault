@@ -6,6 +6,74 @@ import { ProjectForm } from '../components/ProjectForm'
 import { SectionHeader } from '../components/SectionHeader'
 import { createProject, fetchProject, updateProject } from '../lib/projectsApi'
 
+function normalizeComparableDate(value) {
+  if (!value) {
+    return ''
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  return date.toISOString().slice(0, 10)
+}
+
+function normalizeComparableList(value) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.map((item) => String(item || '').trim()).filter(Boolean)
+}
+
+function buildProjectUpdatePatch(existingProject, nextPayload) {
+  if (!existingProject) {
+    return { ...nextPayload }
+  }
+
+  const patch = {}
+  const listKeys = new Set(['techStack', 'keyFeatures'])
+  const dateKeys = new Set(['dateStarted', 'targetCompletion'])
+
+  for (const [key, value] of Object.entries(nextPayload)) {
+    if (key === 'image') {
+      const previousImage = existingProject.image || existingProject.bannerImageUrl || null
+      const incomingImage = value || null
+      if (previousImage !== incomingImage) {
+        patch[key] = value
+      }
+      continue
+    }
+
+    if (listKeys.has(key)) {
+      const previous = normalizeComparableList(existingProject[key])
+      const incoming = normalizeComparableList(value)
+      if (JSON.stringify(previous) !== JSON.stringify(incoming)) {
+        patch[key] = incoming
+      }
+      continue
+    }
+
+    if (dateKeys.has(key)) {
+      const previous = normalizeComparableDate(existingProject[key])
+      const incoming = normalizeComparableDate(value)
+      if (previous !== incoming) {
+        patch[key] = value
+      }
+      continue
+    }
+
+    const previous = existingProject[key] ?? null
+    const incoming = value ?? null
+    if (previous !== incoming) {
+      patch[key] = value
+    }
+  }
+
+  return patch
+}
+
 function parseErrorPayload(message) {
   if (!message) {
     return { message: 'Unable to save project.' }
@@ -62,7 +130,15 @@ export function ProjectFormPage() {
 
     try {
       if (isEditing) {
-        await updateProject(projectId, formData, getToken)
+        const patch = buildProjectUpdatePatch(project, formData)
+
+        if (!Object.keys(patch).length) {
+          toast.info('No changes detected.')
+          navigate('/projects')
+          return
+        }
+
+        await updateProject(projectId, patch, getToken)
       } else {
         await createProject(formData, getToken)
       }

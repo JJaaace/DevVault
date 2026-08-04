@@ -1,9 +1,19 @@
 import { SignedIn, SignedOut, UserButton, useUser } from '@clerk/clerk-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { SectionHeader } from '../components/SectionHeader'
+import { readWorkspacePreferences, saveWorkspacePreferences } from '../lib/workspacePreferences'
 
 export function SettingsPage() {
   const { user } = useUser()
+  const [showCodingStreak, setShowCodingStreak] = useState(() => readWorkspacePreferences().showCodingStreak !== false)
+
+  const handleToggleCodingStreak = () => {
+    const nextValue = !showCodingStreak
+    setShowCodingStreak(nextValue)
+    saveWorkspacePreferences({ showCodingStreak: nextValue })
+    window.dispatchEvent(new Event('devvault:workspace-preferences-changed'))
+  }
 
   return (
     <section className="surface-card p-6 md:p-8 fade-in-up">
@@ -49,6 +59,24 @@ export function SettingsPage() {
             <SignedOut>
               <Link to="/login" className="button-primary px-4 py-2 text-sm">Sign in</Link>
             </SignedOut>
+          </div>
+        </div>
+
+        <div className="widget-card p-6">
+          <p className="section-eyebrow">Workspace</p>
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-[var(--color-text)]">Show coding streak on dashboard</p>
+              <p className="mt-2 text-sm text-[var(--color-text-soft)]">Turn this off when preparing a recruiter-facing demo view.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleCodingStreak}
+              className={`${showCodingStreak ? 'button-primary' : 'button-secondary'} px-4 py-2 text-sm`}
+              aria-pressed={showCodingStreak}
+            >
+              {showCodingStreak ? 'Visible' : 'Hidden'}
+            </button>
           </div>
         </div>
       </div>

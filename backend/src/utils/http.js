@@ -25,12 +25,14 @@ function sendNoContent(res) {
 
 function sendError(res, error, fallbackCode = 'INTERNAL_ERROR', fallbackMessage = 'Request failed.') {
   const statusCode = error.statusCode || 500
+  const isServerError = statusCode >= 500
+  const message = isServerError ? fallbackMessage : (error.message || fallbackMessage)
   return res.status(statusCode).json({
     success: false,
     error: {
       code: error.code || fallbackCode,
-      message: error.message || fallbackMessage,
-      ...(error.details ? { details: error.details } : {}),
+      message,
+      ...(!isServerError && error.details ? { details: error.details } : {}),
     },
   })
 }

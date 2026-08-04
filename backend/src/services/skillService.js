@@ -172,16 +172,18 @@ function enrichMemorySkills(skills, projects) {
 }
 
 function hasPrismaSkillAccess() {
+  const userModel = prisma?.user
+  const skillModel = prisma?.skill
+
   return Boolean(
-    prisma
-    && prisma.user
-    && prisma.skill
-    && typeof prisma.user.upsert === 'function'
-    && typeof prisma.skill.findMany === 'function'
-    && typeof prisma.skill.findFirst === 'function'
-    && typeof prisma.skill.create === 'function'
-    && typeof prisma.skill.update === 'function'
-    && typeof prisma.skill.delete === 'function',
+    userModel
+    && skillModel
+    && typeof userModel.upsert === 'function'
+    && typeof skillModel.findMany === 'function'
+    && typeof skillModel.findFirst === 'function'
+    && typeof skillModel.create === 'function'
+    && typeof skillModel.update === 'function'
+    && typeof skillModel.delete === 'function',
   )
 }
 
@@ -190,11 +192,20 @@ async function ensureOwnerUser(clerkUserId) {
     return
   }
 
-  await prisma.user.upsert({
-    where: { clerkUserId },
-    create: { clerkUserId },
-    update: {},
-  })
+  const userModel = prisma?.user
+  if (!userModel || typeof userModel.upsert !== 'function') {
+    return
+  }
+
+  try {
+    await userModel.upsert({
+      where: { clerkUserId },
+      create: { clerkUserId },
+      update: {},
+    })
+  } catch (error) {
+    throw createServiceError(503, 'Unable to initialize skill owner user.')
+  }
 }
 
 async function resolveRelatedProjects(clerkUserId, relatedProjectIds) {

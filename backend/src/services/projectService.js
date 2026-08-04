@@ -209,16 +209,18 @@ function ensureProjectOwnership(project, clerkUserId) {
 }
 
 function hasPrismaProjectAccess() {
+  const userModel = prisma?.user
+  const projectModel = prisma?.project
+
   return Boolean(
-    prisma
-    && prisma.user
-    && prisma.project
-    && typeof prisma.user.upsert === 'function'
-    && typeof prisma.project.findMany === 'function'
-    && typeof prisma.project.findFirst === 'function'
-    && typeof prisma.project.create === 'function'
-    && typeof prisma.project.update === 'function'
-    && typeof prisma.project.delete === 'function',
+    userModel
+    && projectModel
+    && typeof userModel.upsert === 'function'
+    && typeof projectModel.findMany === 'function'
+    && typeof projectModel.findFirst === 'function'
+    && typeof projectModel.create === 'function'
+    && typeof projectModel.update === 'function'
+    && typeof projectModel.delete === 'function',
   )
 }
 
@@ -227,11 +229,20 @@ async function ensureOwnerUser(clerkUserId) {
     return
   }
 
-  await prisma.user.upsert({
-    where: { clerkUserId },
-    create: { clerkUserId },
-    update: {},
-  })
+  const userModel = prisma?.user
+  if (!userModel || typeof userModel.upsert !== 'function') {
+    return
+  }
+
+  try {
+    await userModel.upsert({
+      where: { clerkUserId },
+      create: { clerkUserId },
+      update: {},
+    })
+  } catch (error) {
+    throw createServiceError(503, 'Unable to initialize project owner user.')
+  }
 }
 
 async function listProjects(clerkUserId) {

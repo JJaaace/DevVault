@@ -28,6 +28,14 @@ function normalizeImageInput(value) {
   return `/${trimmed.replace(/^\/+/, '')}`
 }
 
+function isImageSource(value) {
+  const normalized = String(value || '').trim()
+  return /^(https?:\/\/|data:image\/|blob:|\/)/i.test(normalized)
+}
+
+const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
 function Field({ label, name, value, onChange, placeholder, error, type = 'text', rows, helpText, required = false, min, max, step }) {
   const sharedProps = {
     name,
@@ -72,10 +80,48 @@ function buildInitialState(project) {
 
 export function ProjectForm({ project, onSubmit, onCancel, submitting = false, errors = {}, submitLabel = 'Save project' }) {
   const [formData, setFormData] = useState(() => buildInitialState(project))
+  const [imageUploadError, setImageUploadError] = useState('')
 
   const handleChange = (event) => {
     const { name, value } = event.target
     setFormData((current) => ({ ...current, [name]: value }))
+  }
+
+  const handleImageUpload = (event) => {
+    const [file] = Array.from(event.target.files || [])
+    if (!file) {
+      return
+    }
+
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      setImageUploadError('Please upload a PNG, JPG, JPEG, or WEBP image.')
+      event.target.value = ''
+      return
+    }
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImageUploadError('Image file must be 5MB or smaller.')
+      event.target.value = ''
+      return
+    }
+
+    setImageUploadError('')
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      setFormData((current) => ({ ...current, image: result }))
+      event.target.value = ''
+    }
+    reader.onerror = () => {
+      setImageUploadError('Unable to read that image file. Please try another one.')
+      event.target.value = ''
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const clearImage = () => {
+    setImageUploadError('')
+    setFormData((current) => ({ ...current, image: '' }))
   }
 
   const handleSubmit = (event) => {
@@ -164,6 +210,30 @@ export function ProjectForm({ project, onSubmit, onCancel, submitting = false, e
         <Field label="Project image URL" name="image" value={formData.image} onChange={handleChange} placeholder="/project-showcase/devvault.svg" error={errors.bannerImageUrl || errors.image} helpText="Editable banner artwork path for the project showcase card." />
       </div>
 
+      <div className="rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] p-4">
+        <p className="text-sm font-semibold text-[var(--color-text)]">Project banner upload</p>
+        <p className="mt-1 text-xs text-[var(--color-text-muted)]">Upload PNG/JPG/JPEG/WEBP up to 5MB. Uploaded images are embedded directly into the project record.</p>
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/jpg,image/webp"
+          onChange={handleImageUpload}
+          className="field-input mt-3 file:mr-4 file:rounded-full file:border-0 file:bg-[linear-gradient(135deg,var(--color-brand-soft),var(--color-brand),var(--color-brand-strong))] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:cursor-pointer"
+        />
+        {imageUploadError ? <p className="mt-2 text-sm text-[#b83a1c]">{imageUploadError}</p> : null}
+        {(errors.bannerImageUrl || errors.image) ? <p className="mt-2 text-sm text-[#b83a1c]">{errors.bannerImageUrl || errors.image}</p> : null}
+
+        {isImageSource(formData.image) ? (
+          <div className="mt-3 flex items-center gap-3 rounded-[1.05rem] border border-[rgba(214,160,89,0.24)] bg-[rgba(38,28,20,0.84)] p-3">
+            <img src={formData.image} alt="Project banner preview" className="h-16 w-24 rounded-xl object-cover" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-[var(--color-text)]">Banner preview ready</p>
+              <p className="text-xs text-[var(--color-text-muted)]">This image will appear on project showcase cards after save.</p>
+            </div>
+            <button type="button" onClick={clearImage} className="button-secondary px-3 py-2 text-xs">Remove</button>
+          </div>
+        ) : null}
+      </div>
+
       <Field label="Accent tone" name="accentTone" value={formData.accentTone} onChange={handleChange} placeholder="security, cloud, product, ai" error={errors.accentTone} helpText="Optional aesthetic hint used for visual treatment." />
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -180,6 +250,7 @@ export function ProjectForm({ project, onSubmit, onCancel, submitting = false, e
           placeholder="Next.js\nTailwind CSS\nPrisma"
           type="textarea"
           rows={4}
+          error={errors.techStack}
           helpText="Separate entries with commas or new lines."
         />
         <Field
@@ -190,6 +261,7 @@ export function ProjectForm({ project, onSubmit, onCancel, submitting = false, e
           placeholder="Realtime validation\nThreat scoring\nAdaptive suggestions"
           type="textarea"
           rows={4}
+          error={errors.keyFeatures}
           helpText="Separate entries with commas or new lines."
         />
       </div>

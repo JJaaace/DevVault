@@ -27,6 +27,7 @@ import { WorkspaceHero } from '../components/dashboard/WorkspaceHero'
 import { WorkspaceWidget } from '../components/dashboard/WorkspaceWidget'
 import { getProjectStatusMeta } from '../lib/projectUtils'
 import { fetchWorkspaceResume, fetchWorkspaceResumePdf, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
+import { readWorkspacePreferences } from '../lib/workspacePreferences'
 
 export function DashboardPage() {
   const { user } = useUser()
@@ -38,6 +39,7 @@ export function DashboardPage() {
   const [resume, setResume] = useState(null)
   const [uploadingResume, setUploadingResume] = useState(false)
   const [resolvingResumeAction, setResolvingResumeAction] = useState(false)
+  const [showCodingStreak, setShowCodingStreak] = useState(() => readWorkspacePreferences().showCodingStreak !== false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const lastGitHubSyncAtRef = useRef(null)
@@ -113,6 +115,18 @@ export function DashboardPage() {
     setError(messages[0] || '')
     setLoading(false)
   }, [getToken])
+
+  useEffect(() => {
+    const handlePreferencesChanged = () => {
+      setShowCodingStreak(readWorkspacePreferences().showCodingStreak !== false)
+    }
+
+    window.addEventListener('devvault:workspace-preferences-changed', handlePreferencesChanged)
+
+    return () => {
+      window.removeEventListener('devvault:workspace-preferences-changed', handlePreferencesChanged)
+    }
+  }, [])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -225,6 +239,7 @@ export function DashboardPage() {
         userName={userName}
         activitySeries={activitySeries}
         currentStreak={workspaceStats.currentStreak}
+        showCodingStreak={showCodingStreak}
         upcomingDeadline={heroDeadline}
         quickStats={heroQuickStats}
         quickActions={heroQuickActions}

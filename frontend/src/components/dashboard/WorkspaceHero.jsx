@@ -20,6 +20,7 @@ export function WorkspaceHero({
   userName,
   activitySeries,
   currentStreak,
+  showCodingStreak = true,
   upcomingDeadline,
   quickStats = [],
   quickActions = [],
@@ -120,21 +121,23 @@ export function WorkspaceHero({
             ))}
           </div>
 
-          <div className="widget-card widget-card--accent p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="section-eyebrow">Current coding streak</p>
-                <h3 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text)]">{currentStreak} days</h3>
-                <p className="mt-2 text-sm text-[var(--color-text-soft)]">Derived from your latest profile, project, and skill updates.</p>
+          {showCodingStreak ? (
+            <div className="widget-card widget-card--accent p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="section-eyebrow">Current coding streak</p>
+                  <h3 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text)]">{currentStreak} days</h3>
+                  <p className="mt-2 text-sm text-[var(--color-text-soft)]">Derived from your latest profile, project, and skill updates.</p>
+                </div>
+                <ProgressRing value={Math.min(100, currentStreak * 12.5)} label="streak" color="#ea8b21" size={112}>
+                  <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{currentStreak}</span>
+                </ProgressRing>
               </div>
-              <ProgressRing value={Math.min(100, currentStreak * 12.5)} label="streak" color="#ea8b21" size={112}>
-                <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{currentStreak}</span>
-              </ProgressRing>
+              <div className="mt-4 rounded-[1.35rem] border border-[rgba(214,160,89,0.22)] bg-[rgba(44,33,24,0.82)] p-3">
+                <MiniSparkline values={activitySeries} color="#d96a16" className="h-14 w-full" />
+              </div>
             </div>
-            <div className="mt-4 rounded-[1.35rem] border border-[rgba(214,160,89,0.22)] bg-[rgba(44,33,24,0.82)] p-3">
-              <MiniSparkline values={activitySeries} color="#d96a16" className="h-14 w-full" />
-            </div>
-          </div>
+          ) : null}
 
           <div className="widget-card p-5">
             <p className="section-eyebrow">Quick stats</p>

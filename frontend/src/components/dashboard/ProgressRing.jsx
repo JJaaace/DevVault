@@ -2,7 +2,9 @@ export function ProgressRing({ value = 0, color = '#ea8b21', label = 'progress',
   const radius = (size - strokeWidth) / 2
   const circumference = 2 * Math.PI * radius
   const normalized = Math.max(0, Math.min(100, Number(value) || 0))
-  const dashOffset = circumference - (normalized / 100) * circumference
+  const dashOffset = normalized >= 100 ? 0 : (circumference - (normalized / 100) * circumference)
+  const innerSize = Math.max(40, size - (strokeWidth * 2) - 4)
+  const progressLineCap = normalized >= 100 ? 'butt' : 'round'
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
@@ -14,15 +16,18 @@ export function ProgressRing({ value = 0, color = '#ea8b21', label = 'progress',
           r={radius}
           fill="none"
           stroke={color}
-          strokeLinecap="round"
+          strokeLinecap={progressLineCap}
           strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
+          strokeDasharray={`${circumference} ${circumference}`}
           strokeDashoffset={dashOffset}
           style={{ transition: 'stroke-dashoffset 700ms cubic-bezier(0.2, 0.8, 0.2, 1)' }}
         />
       </svg>
 
-      <div className="relative flex h-[84px] w-[84px] flex-col items-center justify-center rounded-full border border-[rgba(214,160,89,0.24)] bg-[rgba(45,34,25,0.88)] text-center shadow-[0_18px_35px_rgba(18,12,8,0.3)]">
+      <div
+        className="relative flex flex-col items-center justify-center rounded-full border border-[rgba(214,160,89,0.24)] bg-[rgba(45,34,25,0.88)] text-center shadow-[0_18px_35px_rgba(18,12,8,0.3)]"
+        style={{ width: innerSize, height: innerSize }}
+      >
         {children || <span className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{normalized}%</span>}
         <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-text-muted)]">{label}</span>
       </div>
