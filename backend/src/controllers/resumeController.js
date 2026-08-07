@@ -1,3 +1,4 @@
+const fs = require('fs')
 const { sendSuccess, sendNoContent, sendError } = require('../utils/http')
 const {
   getResumeMetadata,
@@ -27,7 +28,13 @@ async function uploadResume(req, res) {
 async function getResumeFile(req, res) {
   try {
     const fileInfo = await getResumeFileInfo(req.auth.userId)
-    return res.download(fileInfo.filePath, fileInfo.fileName)
+    const fileBuffer = fs.readFileSync(fileInfo.filePath)
+    const safeFileName = String(fileInfo.fileName || 'resume.pdf').replace(/"/g, '')
+
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Length', String(fileBuffer.length))
+    res.setHeader('Content-Disposition', `inline; filename="${safeFileName}"`)
+    return res.status(200).send(fileBuffer)
   } catch (error) {
     return sendError(res, error, 'RESUME_FILE_GET_FAILED', 'Unable to load resume file.')
   }

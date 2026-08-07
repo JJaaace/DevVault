@@ -67,6 +67,10 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
     username: profile?.username ?? '',
     bio: profile?.bio ?? '',
     profileImageUrl: initialImageUrl,
+    tagline: profile?.tagline ?? '',
+    pronouns: profile?.pronouns ?? '',
+    openToWork: Boolean(profile?.openToWork),
+    jobType: profile?.jobType ?? '',
     school: profile?.school ?? profile?.university ?? '',
     graduationYear: profile?.graduationYear ?? '',
     major: profile?.major ?? '',
@@ -80,6 +84,7 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
     githubUrl: profile?.githubUrl ?? '',
     linkedinUrl: profile?.linkedinUrl ?? '',
     websiteUrl: profile?.websiteUrl ?? '',
+    twitterUrl: profile?.twitterUrl ?? '',
   }))
   const [imagePreview, setImagePreview] = useState(initialImageUrl)
   const [uploadError, setUploadError] = useState('')
@@ -125,6 +130,10 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
     onSubmit({
       ...formData,
       profileImageUrl: formData.profileImageUrl.trim(),
+      tagline: formData.tagline.trim(),
+      pronouns: formData.pronouns.trim(),
+      openToWork: formData.openToWork,
+      jobType: formData.jobType.trim(),
       school: formData.school.trim(),
       major: formData.major.trim(),
       location: formData.location.trim(),
@@ -136,6 +145,7 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
       githubUrl: formData.githubUrl.trim(),
       linkedinUrl: formData.linkedinUrl.trim(),
       websiteUrl: formData.websiteUrl.trim(),
+      twitterUrl: formData.twitterUrl.trim(),
       graduationYear: normalizeNumberInput(formData.graduationYear),
       yearsCoding: normalizeNumberInput(formData.yearsCoding),
     })
@@ -172,6 +182,26 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
       </div>
 
       <Field label="Bio" name="bio" value={formData.bio} onChange={handleChange} placeholder="Software engineer focused on building reliable user experiences." error={errors.bio} type="textarea" rows={4} required />
+
+      <Field label="Tagline" name="tagline" value={formData.tagline} onChange={handleChange} placeholder="CS student @ Ohio State · Software Engineer · Builder" helpText="A short headline shown at the top of your public profile." />
+
+      <div className="grid gap-6 md:grid-cols-[1fr_1fr_1fr]">
+        <Field label="Pronouns" name="pronouns" value={formData.pronouns} onChange={handleChange} placeholder="he/him" />
+        <Field label="Job type" name="jobType" value={formData.jobType} onChange={handleChange} placeholder="Internship" helpText="e.g. Internship, Full-time, Co-op" />
+        <div className="field-label flex flex-col gap-2">
+          <strong>Open to work</strong>
+          <label className="flex cursor-pointer items-center gap-3 rounded-[1.25rem] border border-[rgba(214,160,89,0.22)] bg-[rgba(32,24,18,0.84)] px-4 py-3">
+            <input
+              type="checkbox"
+              name="openToWork"
+              checked={formData.openToWork}
+              onChange={(event) => setFormData((current) => ({ ...current, openToWork: event.target.checked }))}
+              className="h-4 w-4 accent-[var(--color-brand)]"
+            />
+            <span className="text-sm text-[var(--color-text-soft)]">{formData.openToWork ? 'Visible on your profile' : 'Not shown'}</span>
+          </label>
+        </div>
+      </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Field label="School" name="school" value={formData.school} onChange={handleChange} placeholder="University of Washington" />
@@ -217,6 +247,10 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
         <Field label="GitHub URL" name="githubUrl" value={formData.githubUrl} onChange={handleChange} placeholder="https://github.com/username" error={errors.githubUrl} />
         <Field label="LinkedIn URL" name="linkedinUrl" value={formData.linkedinUrl} onChange={handleChange} placeholder="https://linkedin.com/in/username" error={errors.linkedinUrl} />
         <Field label="Website URL" name="websiteUrl" value={formData.websiteUrl} onChange={handleChange} placeholder="https://your-site.com" error={errors.websiteUrl} />
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-3">
+        <Field label="Twitter / X URL" name="twitterUrl" value={formData.twitterUrl} onChange={handleChange} placeholder="https://x.com/username" error={errors.twitterUrl} />
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">

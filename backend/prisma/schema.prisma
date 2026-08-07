@@ -31,9 +31,14 @@ model Profile {
   favoriteFramework String?
   yearsCoding       Int?
   interests         String[] @default([])
+  tagline           String?
+  pronouns          String?
+  openToWork        Boolean  @default(false)
+  jobType           String?
   githubUrl         String?
   linkedinUrl       String?
   websiteUrl        String?
+  twitterUrl        String?
   githubLastSyncedAt DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

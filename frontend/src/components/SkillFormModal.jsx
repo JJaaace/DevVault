@@ -2,15 +2,6 @@ import { useState } from 'react'
 import { SKILL_LEVEL_OPTIONS, DEFAULT_SKILL_COLOR, normalizeSkillDate } from '../lib/skillUtils'
 import { getTechnologyOptions } from '../lib/technologyCatalog'
 
-function normalizeInteger(value, fallback = 0) {
-  if (value === '' || value === null || value === undefined) {
-    return fallback
-  }
-
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
 function normalizeOptionalInteger(value) {
   if (value === '' || value === null || value === undefined) {
     return null
@@ -94,7 +85,6 @@ function buildInitialState(skill) {
     experienceLevel: skill?.experienceLevel ?? 'BEGINNER',
     yearsExperience: skill?.yearsExperience ?? 0,
     firstUsedYear: skill?.firstUsedYear ?? new Date().getFullYear(),
-    projectsBuilt: skill?.projectsBuilt ?? 0,
     color: skill?.color ?? DEFAULT_SKILL_COLOR,
     lastUsed: skill?.lastUsed ? new Date(skill.lastUsed).toISOString().slice(0, 10) : '',
     notes: skill?.notes ?? '',
@@ -132,7 +122,6 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
       experienceLevel: formData.experienceLevel,
       yearsExperience: normalizeExperienceYears(formData.yearsExperience),
       firstUsedYear: normalizeOptionalInteger(formData.firstUsedYear),
-      projectsBuilt: normalizeInteger(formData.projectsBuilt, 0),
       color: formData.color.trim(),
       lastUsed: normalizeSkillDate(formData.lastUsed),
       notes: formData.notes.trim(),
@@ -185,10 +174,9 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
             <Field label="Last used" name="lastUsed" value={formData.lastUsed} onChange={handleChange} type="date" error={errors.lastUsed} />
           </div>
 
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2">
             <Field label="Years of experience" name="yearsExperience" value={formData.yearsExperience} onChange={handleChange} type="number" min="0" max="60" step="1" error={errors.yearsExperience} />
             <Field label="First used year" name="firstUsedYear" value={formData.firstUsedYear} onChange={handleChange} type="number" min="1980" max="2100" step="1" error={errors.firstUsedYear} />
-            <Field label="Projects built" name="projectsBuilt" value={formData.projectsBuilt} onChange={handleChange} type="number" min="0" max="500" step="1" error={errors.projectsBuilt} />
           </div>
 
           <Field label="Notes" name="notes" value={formData.notes} onChange={handleChange} placeholder="How this skill is being used right now." type="textarea" rows={4} />

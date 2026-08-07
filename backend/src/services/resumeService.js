@@ -45,7 +45,7 @@ function parsePdfDataUrl(dataUrl) {
     throw createServiceError(400, 'Resume file data is required.')
   }
 
-  const match = dataUrl.match(/^data:application\/pdf;base64,([A-Za-z0-9+/=\s]+)$/i)
+  const match = dataUrl.match(/^data:[^;]+;base64,([A-Za-z0-9+/=\s]+)$/i)
   if (!match) {
     throw createServiceError(400, 'Resume must be uploaded as a PDF file.')
   }
@@ -87,7 +87,20 @@ function buildResumeResponse(clerkUserId, metadataEntry) {
 
 async function getResumeMetadata(clerkUserId) {
   const store = readMetadataStore()
-  return buildResumeResponse(clerkUserId, store[clerkUserId] || null)
+  const metadataEntry = store[clerkUserId] || null
+
+  if (!metadataEntry) {
+    return buildResumeResponse(clerkUserId, null)
+  }
+
+  const filePath = getResumeFilePath(clerkUserId)
+  if (!fs.existsSync(filePath)) {
+    delete store[clerkUserId]
+    writeMetadataStore(store)
+    return buildResumeResponse(clerkUserId, null)
+  }
+
+  return buildResumeResponse(clerkUserId, metadataEntry)
 }
 
 async function getResumeFileInfo(clerkUserId) {

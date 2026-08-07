@@ -154,9 +154,18 @@ export function PortfolioPage() {
             <h2 className="mt-3 text-4xl font-semibold tracking-tight text-[var(--color-text)] md:text-5xl">
               {fullName || profile.username}
             </h2>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--color-text-soft)]">
+            {profile.tagline ? (
+              <p className="mt-4 max-w-2xl text-base italic leading-7 text-[var(--color-text-soft)]">{profile.tagline}</p>
+            ) : null}
+            <p className={`max-w-2xl text-base leading-7 text-[var(--color-text-soft)] ${profile.tagline ? 'mt-1' : 'mt-4'}`}>
               {profile.currentRole || 'Developer portfolio'} · {profile.location || 'Location not added yet'}
             </p>
+            {profile.openToWork ? (
+              <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[rgba(247,204,129,0.44)] bg-[rgba(73,50,30,0.88)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.18em] text-[var(--color-brand-ink)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand-strong)]" />
+                {profile.jobType ? `Open to ${profile.jobType}` : 'Open to work'}
+              </span>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-3">

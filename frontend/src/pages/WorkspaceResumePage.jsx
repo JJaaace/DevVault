@@ -35,10 +35,18 @@ function formatDate(value) {
   }).format(date)
 }
 
+function isPdfFile(file) {
+  const type = String(file?.type || '').toLowerCase()
+  const name = String(file?.name || '')
+  return type.includes('pdf') || /\.pdf$/i.test(name)
+}
+
 export function WorkspaceResumePage() {
   const { getToken } = useAuth()
   const [resume, setResume] = useState(null)
   const [resumePdfUrl, setResumePdfUrl] = useState('')
+  const [resumeLoadError, setResumeLoadError] = useState('')
+  const [resumePreviewError, setResumePreviewError] = useState('')
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [loadingPdf, setLoadingPdf] = useState(false)
@@ -55,6 +63,7 @@ export function WorkspaceResumePage() {
 
   const loadResumePdf = useCallback(async () => {
     setLoadingPdf(true)
+    setResumePreviewError('')
     try {
       const fileBlob = await fetchWorkspaceResumePdf(getToken)
       const blobUrl = URL.createObjectURL(fileBlob)
@@ -65,6 +74,9 @@ export function WorkspaceResumePage() {
         return blobUrl
       })
       return blobUrl
+    } catch (error) {
+      setResumePreviewError(error.message || 'Unable to load resume preview.')
+      throw error
     } finally {
       setLoadingPdf(false)
     }
@@ -81,11 +93,17 @@ export function WorkspaceResumePage() {
   useEffect(() => {
     async function loadResume() {
       try {
+        setResumeLoadError('')
         const data = await fetchWorkspaceResume(getToken)
         setResume(data)
         if (data?.uploaded) {
-          await loadResumePdf()
+          try {
+            await loadResumePdf()
+          } catch {
+            // Keep resume metadata visible even if preview fetch fails.
+          }
         } else {
+          setResumePreviewError('')
           setResumePdfUrl((current) => {
             if (current) {
               URL.revokeObjectURL(current)
@@ -94,7 +112,8 @@ export function WorkspaceResumePage() {
           })
         }
       } catch (error) {
-        toast.error(error.message || 'Unable to load resume.')
+        setResume(null)
+        setResumeLoadError(error.message || 'Unable to load resume workspace right now.')
       } finally {
         setLoading(false)
       }
@@ -113,7 +132,7 @@ export function WorkspaceResumePage() {
       return
     }
 
-    if (file.type !== 'application/pdf') {
+    if (!isPdfFile(file)) {
       toast.error('Please upload a PDF file.')
       event.target.value = ''
       return
@@ -122,6 +141,7 @@ export function WorkspaceResumePage() {
     setUploading(true)
     try {
       const updated = await uploadWorkspaceResume(file, getToken)
+      setResumeLoadError('')
       setResume(updated)
       await loadResumePdf()
       toast.success('Resume uploaded.')
@@ -158,6 +178,7 @@ export function WorkspaceResumePage() {
 
   const hasResume = Boolean(resume?.uploaded)
   const viewerKey = useMemo(() => `${resumePdfUrl || 'empty'}`, [resumePdfUrl])
+  const canRenderPreview = hasResume && viewerReady && resumePdfUrl
 
   return (
     <div className="page-shell page-shell--wide page-stack pb-14">
@@ -180,6 +201,12 @@ export function WorkspaceResumePage() {
               Last updated: {formatDate(resume?.lastUpdated)}
               {hasResume ? ` • ${formatBytes(resume?.byteSize)}` : ''}
             </p>
+            {resumeLoadError ? (
+              <p className="mt-2 text-sm text-[#f3b17d]">{resumeLoadError}</p>
+            ) : null}
+            {resumePreviewError ? (
+              <p className="mt-2 text-sm text-[#f3b17d]">{resumePreviewError}</p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -207,9 +234,16 @@ export function WorkspaceResumePage() {
 
       <section className="surface-card surface-card--strong resume-viewer-shell p-4 md:p-5">
         {hasResume ? (
-          viewerReady && resumePdfUrl ? (
-            <div className="resume-viewer-frame-wrap">
+          canRenderPreview ? (
+            <div className="resume-viewer-frame-wrap resume-viewer-frame-wrap--glow">
               <iframe key={viewerKey} src={resumePdfUrl} title="Resume PDF Viewer" className="resume-viewer-frame" />
+            </div>
+          ) : resumePreviewError ? (
+            <div className="widget-card p-6 text-sm text-[var(--color-text-soft)]">
+              <p>{resumePreviewError}</p>
+              <button type="button" onClick={() => loadResumePdf().catch(() => {})} className="button-secondary mt-4 px-4 py-2 text-sm">
+                Retry Preview
+              </button>
             </div>
           ) : (
             <div className="widget-card p-6 text-sm text-[var(--color-text-soft)]">Preparing secure viewer...</div>

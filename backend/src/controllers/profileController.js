@@ -52,6 +52,10 @@ function validateProfilePayload(payload) {
     errors.websiteUrl = 'Website URL must start with http:// or https://.'
   }
 
+  if (!isHttpUrl(payload.twitterUrl)) {
+    errors.twitterUrl = 'Twitter/X URL must start with http:// or https://.'
+  }
+
   if (!isInteger(payload.graduationYear)) {
     errors.graduationYear = 'Graduation year must be a number.'
   }
@@ -114,9 +118,14 @@ function buildProfilePayload(payload, clerkUserId) {
     favoriteFramework: normalizeText(payload.favoriteFramework),
     yearsCoding: normalizeInteger(payload.yearsCoding),
     interests: normalizeList(payload.interests),
+    tagline: normalizeText(payload.tagline),
+    pronouns: normalizeText(payload.pronouns),
+    openToWork: Boolean(payload.openToWork),
+    jobType: normalizeText(payload.jobType),
     githubUrl: normalizeText(payload.githubUrl),
     linkedinUrl: normalizeText(payload.linkedinUrl),
     websiteUrl: normalizeText(payload.websiteUrl),
+    twitterUrl: normalizeText(payload.twitterUrl),
   }
 }
 

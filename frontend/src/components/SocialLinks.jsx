@@ -2,6 +2,7 @@ export function SocialLinks({ profile }) {
   const links = [
     { label: 'GitHub', href: profile?.githubUrl, icon: 'G' },
     { label: 'LinkedIn', href: profile?.linkedinUrl, icon: 'in' },
+    { label: 'Twitter', href: profile?.twitterUrl, icon: 'X' },
     { label: 'Website', href: profile?.websiteUrl, icon: '↗' },
   ].filter((link) => Boolean(link.href))
 

@@ -1,30 +1,30 @@
 export const SKILL_LEVEL_OPTIONS = [
-  { value: 'BEGINNER', label: 'Beginner' },
-  { value: 'ADVANCED_BEGINNER', label: 'Advanced Beginner' },
-  { value: 'INTERMEDIATE', label: 'Intermediate' },
-  { value: 'ADVANCED', label: 'Advanced' },
-  { value: 'EXPERT', label: 'Expert' },
+  { value: 'BEGINNER', label: '🌱 Learning' },
+  { value: 'ADVANCED_BEGINNER', label: '⚡ Comfortable' },
+  { value: 'INTERMEDIATE', label: '⚡ Comfortable' },
+  { value: 'ADVANCED', label: '🚀 Confident' },
+  { value: 'EXPERT', label: '🏆 Advanced' },
 ]
 
 const levelMeta = {
   BEGINNER: {
-    label: 'Beginner',
+    label: '🌱 Learning',
     toneClass: 'text-[var(--color-text-soft)]',
   },
   ADVANCED_BEGINNER: {
-    label: 'Advanced Beginner',
+    label: '⚡ Comfortable',
     toneClass: 'text-[#d9ad74]',
   },
   INTERMEDIATE: {
-    label: 'Intermediate',
+    label: '⚡ Comfortable',
     toneClass: 'text-[var(--color-brand-ink)]',
   },
   ADVANCED: {
-    label: 'Advanced',
+    label: '🚀 Confident',
     toneClass: 'text-[#dfb983]',
   },
   EXPERT: {
-    label: 'Expert',
+    label: '🏆 Advanced',
     toneClass: 'text-[#e58f3d]',
   },
 }

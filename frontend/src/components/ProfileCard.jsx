@@ -48,8 +48,18 @@ export function ProfileCard({ profile, onEdit }) {
           <div>
             <p className="section-eyebrow">Developer profile</p>
             <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text)]">{fullName}</h3>
-            <p className="mt-2 text-sm font-medium text-[var(--color-brand-ink)]">@{profile.username}</p>
-            {profile.currentRole ? <p className="mt-2 text-sm text-[var(--color-text-soft)]">{profile.currentRole}</p> : null}
+            <p className="mt-2 text-sm font-medium text-[var(--color-brand-ink)]">@{profile.username}{profile.pronouns ? ` · ${profile.pronouns}` : ''}</p>
+            {profile.tagline ? (
+              <p className="mt-2 text-sm italic text-[var(--color-text-soft)]">{profile.tagline}</p>
+            ) : profile.currentRole ? (
+              <p className="mt-2 text-sm text-[var(--color-text-soft)]">{profile.currentRole}</p>
+            ) : null}
+            {profile.openToWork ? (
+              <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[rgba(247,204,129,0.44)] bg-[rgba(73,50,30,0.88)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.18em] text-[var(--color-brand-ink)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand-strong)]" />
+                {profile.jobType ? `Open to ${profile.jobType}` : 'Open to work'}
+              </span>
+            ) : null}
           </div>
         </div>
         {onEdit ? (
