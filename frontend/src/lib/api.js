@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '' : 'http://localhost:5001')
 const DEFAULT_TIMEOUT_MS = 12000
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504])
 
@@ -158,6 +158,63 @@ export async function authenticatedRequest(path, options = {}, getToken) {
     },
     async () => getToken(),
   )
+}
+
+export async function authenticatedBlobRequest(path, options = {}, getToken) {
+  const method = options.method || 'GET'
+  const headers = new Headers(options.headers || {})
+  const token = await getToken()
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const controller = new AbortController()
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type')
+      const rawBody = await response.text()
+      let parsedBody = null
+
+      try {
+        parsedBody = parseResponseBody(rawBody, contentType)
+      } catch {
+        parsedBody = null
+      }
+
+      const fallbackMessage = response.status >= 500
+        ? 'Something went wrong while loading this file. Please try again.'
+        : `Request failed with status ${response.status}`
+
+      throw createApiError({
+        message: sanitizeErrorMessage(
+          parsedBody?.error?.message || parsedBody?.message || rawBody,
+          response.status,
+          fallbackMessage,
+        ),
+        status: response.status,
+        statusText: response.statusText,
+        code: parsedBody?.error?.code,
+        details: parsedBody?.error?.details || parsedBody?.errors,
+        body: rawBody,
+        path,
+        method,
+      })
+    }
+
+    return response.blob()
+  } finally {
+    clearTimeout(timeoutHandle)
+  }
 }
 
 export async function publicRequest(path, options = {}) {

@@ -89,6 +89,7 @@ function buildInitialState(skill) {
     lastUsed: skill?.lastUsed ? new Date(skill.lastUsed).toISOString().slice(0, 10) : '',
     notes: skill?.notes ?? '',
     relatedProjectIds: (skill?.relatedProjects || []).map((project) => String(project.id)),
+    publicVisible: skill?.publicVisible ?? true,
   }
 }
 
@@ -126,6 +127,7 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
       lastUsed: normalizeSkillDate(formData.lastUsed),
       notes: formData.notes.trim(),
       relatedProjectIds: formData.relatedProjectIds.map((id) => Number(id)),
+      publicVisible: formData.publicVisible,
     })
   }
 
@@ -180,6 +182,11 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
           </div>
 
           <Field label="Notes" name="notes" value={formData.notes} onChange={handleChange} placeholder="How this skill is being used right now." type="textarea" rows={4} />
+
+          <label className="flex cursor-pointer items-center gap-3 rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
+            <input type="checkbox" checked={formData.publicVisible} onChange={(event) => setFormData((current) => ({ ...current, publicVisible: event.target.checked }))} className="h-4 w-4 accent-[var(--color-brand)]" />
+            <span className="text-sm text-[var(--color-text-soft)]">Visible on public portfolio</span>
+          </label>
 
           <div>
             <p className="mb-3 text-sm font-semibold uppercase tracking-[0.28em] text-[var(--color-text-muted)]">Related projects</p>

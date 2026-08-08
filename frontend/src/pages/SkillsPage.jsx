@@ -9,6 +9,7 @@ import { fetchProjects } from '../lib/projectsApi'
 import { getSkillLevelMeta } from '../lib/skillUtils'
 import { createSkill, deleteSkill, fetchSkills, updateSkill } from '../lib/skillsApi'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useGuestMode } from '../context/GuestModeContext'
 
 const FAVORITE_SKILL_STORAGE_KEY = 'devvault:favorite-technology'
 const DEFAULT_FAVORITE_SKILL_KEY = 'python'
@@ -96,13 +97,13 @@ function AnimatedCounter({ value, suffix = '' }) {
   return <span>{displayValue}{suffix}</span>
 }
 
-export function SkillsPage() {
-  const { getToken } = useAuth()
+function SkillsPageContent({ getToken }) {
+  const { isGuestMode, portfolio, resolvePath } = useGuestMode()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [skills, setSkills] = useState([])
-  const [projects, setProjects] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [skills, setSkills] = useState(() => isGuestMode ? portfolio.skills || [] : [])
+  const [projects, setProjects] = useState(() => isGuestMode ? portfolio.projects || [] : [])
+  const [loading, setLoading] = useState(!isGuestMode)
   const [error, setError] = useState('')
 
   const [search, setSearch] = useState(() => searchParams.get('technology') || '')
@@ -119,6 +120,7 @@ export function SkillsPage() {
   })
 
   const [favoriteSkillKey, setFavoriteSkillKey] = useState(() => {
+    if (isGuestMode) return portfolio.profile?.favoriteLanguage || portfolio.profile?.favoriteFramework || DEFAULT_FAVORITE_SKILL_KEY
     if (typeof window === 'undefined') {
       return DEFAULT_FAVORITE_SKILL_KEY
     }
@@ -140,6 +142,7 @@ export function SkillsPage() {
   const [modalErrors, setModalErrors] = useState({})
 
   useEffect(() => {
+    if (isGuestMode) return
     async function loadData() {
       try {
         const [skillData, projectData] = await Promise.all([
@@ -157,7 +160,7 @@ export function SkillsPage() {
     }
 
     loadData()
-  }, [getToken])
+  }, [getToken, isGuestMode])
 
   const enrichedSkills = useMemo(() => {
     return skills.map((skill) => {
@@ -192,12 +195,13 @@ export function SkillsPage() {
   }, [enrichedSkills, favoriteSkillKey])
 
   useEffect(() => {
+    if (isGuestMode) return
     if (typeof window === 'undefined') {
       return
     }
 
     window.localStorage.setItem(FAVORITE_SKILL_STORAGE_KEY, favoriteSkillKey)
-  }, [favoriteSkillKey])
+  }, [favoriteSkillKey, isGuestMode])
 
   const visibleSkills = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -443,9 +447,9 @@ export function SkillsPage() {
               A premium stack overview built around real project usage, growth timeline, and practical confidence.
             </p>
           </div>
-          <button type="button" onClick={openCreateModal} className="button-primary px-5 py-3 text-sm md:text-base">
+          {!isGuestMode ? <button type="button" onClick={openCreateModal} className="button-primary px-5 py-3 text-sm md:text-base">
             Add Technology
-          </button>
+          </button> : <span className="guest-read-only-badge">Guest view · Read only</span>}
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -494,9 +498,9 @@ export function SkillsPage() {
                 {favoriteSkill.notes || 'This is currently the technology I enjoy working with the most.'}
               </p>
             </div>
-            <button type="button" onClick={() => openEditModal(favoriteSkill)} className="button-secondary px-4 py-2 text-sm">
+            {!isGuestMode ? <button type="button" onClick={() => openEditModal(favoriteSkill)} className="button-secondary px-4 py-2 text-sm">
               Edit
-            </button>
+            </button> : null}
           </div>
         </motion.section>
       ) : null}
@@ -589,14 +593,14 @@ export function SkillsPage() {
                                   <p className="skills-tech-category">{skill.category}</p>
                                   <h4 className="skills-tech-name">{skill.name}</h4>
                                 </div>
-                                <button
+                                {!isGuestMode ? <button
                                   type="button"
                                   onClick={() => setFavoriteTechnology(skill)}
                                   className={`skills-tech-star ${favoriteSkill && favoriteSkill.id === skill.id ? 'is-active' : ''}`.trim()}
                                   aria-label={`Set ${skill.name} as favorite technology`}
                                 >
                                   ★
-                                </button>
+                                </button> : null}
                               </div>
 
                               <div className="skills-tech-metrics">
@@ -630,7 +634,7 @@ export function SkillsPage() {
                                       <button
                                         key={project.id}
                                         type="button"
-                                        onClick={() => navigate(`/projects/${project.id}/edit`)}
+                                        onClick={() => navigate(resolvePath(`/projects/${project.id}/edit`))}
                                         className="skills-project-chip"
                                       >
                                         {project.title}
@@ -645,15 +649,15 @@ export function SkillsPage() {
                                 )}
                               </div>
 
-                              <div className="mt-4">
+                              {!isGuestMode ? <div className="mt-4">
                                 <p className="skill-metric-label">Personal Notes</p>
                                 <p className="mt-2 text-sm leading-6 text-[var(--color-text-soft)] skills-note-clamp">{skill.notes || 'No notes added yet.'}</p>
-                              </div>
+                              </div> : null}
 
-                              <div className="mt-4 flex gap-2">
+                              {!isGuestMode ? <div className="mt-4 flex gap-2">
                                 <button type="button" onClick={() => openEditModal(skill)} className="button-secondary px-3 py-2 text-xs">Edit</button>
                                 <button type="button" onClick={() => handleDelete(skill)} className="button-secondary px-3 py-2 text-xs">Delete</button>
-                              </div>
+                              </div> : null}
                             </motion.article>
                           ))}
                         </div>
@@ -700,7 +704,7 @@ export function SkillsPage() {
         )}
       </section>
 
-      {isModalOpen ? (
+      {!isGuestMode && isModalOpen ? (
         <SkillFormModal
           key={editingSkill?.id || 'new-skill'}
           skill={editingSkill}
@@ -713,4 +717,14 @@ export function SkillsPage() {
       ) : null}
     </div>
   )
+}
+
+function AuthenticatedSkillsPage() {
+  const { getToken } = useAuth()
+  return <SkillsPageContent getToken={getToken} />
+}
+
+export function SkillsPage() {
+  const { isGuestMode } = useGuestMode()
+  return isGuestMode ? <SkillsPageContent getToken={async () => ''} /> : <AuthenticatedSkillsPage />
 }

@@ -3,31 +3,15 @@ const { listSkills } = require('../services/skillService')
 const { getLocalStore } = require('../services/localStore')
 const { sendSuccess, sendError } = require('../utils/http')
 const { buildDashboardPayload } = require('../services/insightService')
-
-let prisma = null
-
-try {
-  const { PrismaClient } = require('@prisma/client')
-  const { PrismaPg } = require('@prisma/adapter-pg')
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
-  prisma = new PrismaClient({ adapter })
-} catch (error) {
-  prisma = null
-}
+const { prisma } = require('../db/prisma')
+const { isPostgresMode } = require('../config/persistence')
+const { listGoals } = require('../services/goalService')
+const { listCertifications } = require('../services/certificationService')
+const { getResumeMetadata } = require('../services/resumeService')
 
 async function loadProfile(clerkUserId) {
-  if (prisma) {
-    try {
-      const profile = await prisma.profile.findUnique({
-        where: { clerkUserId },
-      })
-
-      if (profile) {
-        return profile
-      }
-    } catch {
-      // Fall through to local store.
-    }
+  if (isPostgresMode()) {
+    return prisma.profile.findUnique({ where: { clerkUserId } })
   }
 
   return getLocalStore().profiles.find((profile) => profile.clerkUserId === clerkUserId) || null
@@ -37,15 +21,21 @@ async function getDashboard(req, res) {
   try {
     const profile = await loadProfile(req.auth.userId)
 
-    const [projects, skills] = await Promise.all([
+    const [projects, skills, goals, certifications, resume] = await Promise.all([
       listProjects(req.auth.userId),
       listSkills(req.auth.userId),
+      listGoals(req.auth.userId),
+      listCertifications(req.auth.userId),
+      getResumeMetadata(req.auth.userId),
     ])
 
     const payload = buildDashboardPayload({
       profile,
       projects,
       skills,
+      goals,
+      certifications,
+      resume,
     })
 
     return sendSuccess(res, payload)

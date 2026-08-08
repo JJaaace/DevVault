@@ -1,6 +1,6 @@
 const { requireAuth } = require('@clerk/express')
 
-const hasClerkKey = Boolean(process.env.CLERK_PUBLISHABLE_KEY && !process.env.CLERK_PUBLISHABLE_KEY.includes('your_clerk'))
+const { hasClerkConfig, allowDevAuth } = require('../config/auth')
 
 function applyDevAuth(req, res, next) {
   req.auth = req.auth || { userId: process.env.DEV_CLERK_USER_ID || 'dev-local-user' }
@@ -8,9 +8,11 @@ function applyDevAuth(req, res, next) {
 }
 
 function protectRoute(req, res, next) {
-  if (!hasClerkKey) {
+  if (allowDevAuth) {
     return applyDevAuth(req, res, next)
   }
+
+  if (!hasClerkConfig) return res.status(503).json({ success: false, error: { code: 'AUTH_NOT_CONFIGURED', message: 'Authentication is not configured.' } })
 
   return requireAuth(req, res, next)
 }

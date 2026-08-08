@@ -1,5 +1,7 @@
 const fs = require('fs')
 const path = require('path')
+const { prisma } = require('../db/prisma')
+const { isPostgresMode } = require('../config/persistence')
 
 const DATA_DIR = path.join(__dirname, '..', '..', '.data')
 const RESUME_ROOT_DIR = path.join(DATA_DIR, 'resumes')
@@ -86,6 +88,14 @@ function buildResumeResponse(clerkUserId, metadataEntry) {
 }
 
 async function getResumeMetadata(clerkUserId) {
+  if (isPostgresMode()) {
+    const metadataEntry = await prisma.resumeAsset.findUnique({
+      where: { ownerClerkUserId: clerkUserId },
+      select: { fileName: true, byteSize: true, updatedAt: true },
+    })
+    return buildResumeResponse(clerkUserId, metadataEntry)
+  }
+
   const store = readMetadataStore()
   const metadataEntry = store[clerkUserId] || null
 
@@ -104,6 +114,16 @@ async function getResumeMetadata(clerkUserId) {
 }
 
 async function getResumeFileInfo(clerkUserId) {
+  if (isPostgresMode()) {
+    const resume = await prisma.resumeAsset.findUnique({ where: { ownerClerkUserId: clerkUserId } })
+    if (!resume) throw createServiceError(404, 'Resume not found.')
+    return {
+      content: Buffer.from(resume.content),
+      fileName: resume.fileName,
+      mimeType: resume.mimeType,
+    }
+  }
+
   const store = readMetadataStore()
   const metadataEntry = store[clerkUserId]
   if (!metadataEntry) {
@@ -116,14 +136,35 @@ async function getResumeFileInfo(clerkUserId) {
   }
 
   return {
-    filePath,
+    content: fs.readFileSync(filePath),
     fileName: metadataEntry.fileName || 'resume.pdf',
+    mimeType: 'application/pdf',
   }
 }
 
 async function saveResumePdf(clerkUserId, payload) {
   const fileData = parsePdfDataUrl(payload.fileData)
   const sanitizedName = sanitizeFileName(payload.fileName)
+
+  if (isPostgresMode()) {
+    const resume = await prisma.resumeAsset.upsert({
+      where: { ownerClerkUserId: clerkUserId },
+      create: {
+        ownerClerkUserId: clerkUserId,
+        fileName: sanitizedName,
+        mimeType: 'application/pdf',
+        byteSize: fileData.length,
+        content: fileData,
+      },
+      update: {
+        fileName: sanitizedName,
+        mimeType: 'application/pdf',
+        byteSize: fileData.length,
+        content: fileData,
+      },
+    })
+    return buildResumeResponse(clerkUserId, resume)
+  }
 
   ensureDirectory(RESUME_ROOT_DIR)
   const userResumeDir = path.join(RESUME_ROOT_DIR, clerkUserId)
@@ -145,6 +186,11 @@ async function saveResumePdf(clerkUserId, payload) {
 }
 
 async function removeResume(clerkUserId) {
+  if (isPostgresMode()) {
+    await prisma.resumeAsset.deleteMany({ where: { ownerClerkUserId: clerkUserId } })
+    return
+  }
+
   const resumePath = getResumeFilePath(clerkUserId)
   try {
     if (fs.existsSync(resumePath)) {

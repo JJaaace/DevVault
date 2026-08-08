@@ -1,48 +1,26 @@
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 
 const MAX_IMAGE_BYTES = 7 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
 
-function getInitialPortraitSrc(src, storageKey) {
-  if (typeof window === 'undefined') {
-    return src
-  }
-
-  return window.localStorage.getItem(storageKey) || src
-}
-
-function buildOrbitParticles() {
-  return Array.from({ length: 14 }).map((_, index) => {
-    const angle = (Math.PI * 2 * index) / 14
-    const distance = 32 + (index % 4) * 10
-
-    return {
-      id: index,
-      x: Math.cos(angle) * distance,
-      y: Math.sin(angle) * distance,
-      delay: index * 0.23,
-    }
-  })
-}
-
 export function VaultPortrait({
   src = '/profile/profile.jpg',
   alt = 'Jace Joseph portrait',
   storageKey = 'devvault:inside-vault:portrait',
+  allowLocalOverride = false,
+  onImageChange,
 }) {
-  const initialImageSrc = getInitialPortraitSrc(src, storageKey)
-  const initialCustomImage = initialImageSrc !== src
   const [hovered, setHovered] = useState(false)
-  const [imageSrc, setImageSrc] = useState(initialImageSrc)
-  const [customImage, setCustomImage] = useState(initialCustomImage)
-  const [unlockUpload, setUnlockUpload] = useState(!initialCustomImage)
+  const customImage = Boolean(src && src !== '/profile/profile.jpg')
+  const [unlockUpload, setUnlockUpload] = useState(!customImage)
   const [tapTimes, setTapTimes] = useState([])
-  const [failed, setFailed] = useState(false)
+  const [failedSrc, setFailedSrc] = useState('')
   const [uploadError, setUploadError] = useState('')
+  const [saving, setSaving] = useState(false)
   const [pointer, setPointer] = useState({ x: 50, y: 50, rx: 0, ry: 0 })
   const fileInputRef = useRef(null)
-  const orbitParticles = useMemo(() => buildOrbitParticles(), [])
+  const displayedImageSrc = src
 
   const handleMove = (event) => {
     const box = event.currentTarget.getBoundingClientRect()
@@ -64,7 +42,7 @@ export function VaultPortrait({
   }
 
   const handlePortraitClick = () => {
-    if (!customImage) {
+    if (!allowLocalOverride || !customImage) {
       return
     }
 
@@ -99,21 +77,30 @@ export function VaultPortrait({
     }
 
     const reader = new FileReader()
-    reader.onload = () => {
+    reader.onload = async () => {
       const nextSrc = typeof reader.result === 'string' ? reader.result : ''
       if (!nextSrc) {
         setUploadError('Unable to read this image. Try another file.')
         return
       }
 
-      setImageSrc(nextSrc)
-      setCustomImage(true)
-      setUnlockUpload(false)
-      setFailed(false)
-      setUploadError('')
+      setSaving(true)
+      try {
+        if (onImageChange) {
+          await onImageChange(nextSrc)
+        }
 
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(storageKey, nextSrc)
+        setUnlockUpload(false)
+        setFailedSrc('')
+        setUploadError('')
+
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(storageKey, nextSrc)
+        }
+      } catch (error) {
+        setUploadError(error.message || 'Unable to save this profile picture. Please try again.')
+      } finally {
+        setSaving(false)
       }
     }
 
@@ -145,58 +132,44 @@ export function VaultPortrait({
         '--vault-light-y': `${pointer.y}%`,
       }}
     >
-      {!customImage ? (
-        <div className="vault-portrait-particle-cloud" aria-hidden="true">
-          {orbitParticles.map((particle) => (
-            <span
-              key={particle.id}
-              className="vault-portrait-orb"
-              style={{
-                '--orb-x': `${particle.x}px`,
-                '--orb-y': `${particle.y}px`,
-                '--orb-delay': `${particle.delay}s`,
-              }}
-            />
-          ))}
-        </div>
-      ) : null}
-
       <div className="vault-portrait-border" aria-hidden="true" />
       <div className="vault-portrait-glow" aria-hidden="true" />
       <div className="vault-portrait-light" aria-hidden="true" />
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/jpg,image/webp"
-        className="vault-portrait-input"
-        onChange={handleFileChange}
-      />
+      {allowLocalOverride ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/jpg,image/webp"
+          className="vault-portrait-input"
+          onChange={handleFileChange}
+        />
+      ) : null}
 
       <div
         className={`vault-portrait-frame ${customImage ? 'vault-portrait-frame--clickable' : ''}`.trim()}
         onClick={handlePortraitClick}
       >
-        {failed ? (
+        {failedSrc === displayedImageSrc ? (
           <div className="vault-portrait-fallback">
             <p>Jace Joseph</p>
             <span>Developer Workspace Artifact</span>
           </div>
         ) : (
           <img
-            src={imageSrc}
+            src={displayedImageSrc}
             alt={alt}
             className="vault-portrait-image"
             loading="eager"
-            onError={() => setFailed(true)}
+            onError={() => setFailedSrc(displayedImageSrc)}
           />
         )}
       </div>
 
-      {(!customImage || unlockUpload) ? (
+      {allowLocalOverride && (!customImage || unlockUpload) ? (
         <div className="vault-portrait-controls">
-          <button type="button" className="vault-portrait-control-button" onClick={triggerUpload}>
-            Upload photo
+          <button type="button" className="vault-portrait-control-button" onClick={triggerUpload} disabled={saving}>
+            {saving ? 'Saving…' : customImage ? 'Replace photo' : 'Upload photo'}
           </button>
         </div>
       ) : null}

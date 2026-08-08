@@ -9,7 +9,7 @@ async function startGitHubSyncHandler(req, res) {
       data: job,
     })
   } catch (error) {
-    return sendError(res, error, 'GITHUB_SYNC_START_FAILED', 'Unable to start GitHub synchronization.')
+    return sendError(res, error, 'GITHUB_SYNC_START_FAILED', 'Unable to start GitHub project synchronization.')
   }
 }
 
@@ -20,13 +20,13 @@ async function getGitHubSyncHandler(req, res) {
       return sendError(res, {
         statusCode: 404,
         code: 'GITHUB_SYNC_NOT_FOUND',
-        message: 'GitHub synchronization job not found.',
-      }, 'GITHUB_SYNC_NOT_FOUND', 'GitHub synchronization job not found.')
+        message: 'GitHub project synchronization job not found.',
+      }, 'GITHUB_SYNC_NOT_FOUND', 'GitHub project synchronization job not found.')
     }
 
     return sendSuccess(res, job)
   } catch (error) {
-    return sendError(res, error, 'GITHUB_SYNC_GET_FAILED', 'Unable to load GitHub synchronization status.')
+    return sendError(res, error, 'GITHUB_SYNC_GET_FAILED', 'Unable to load GitHub project synchronization status.')
   }
 }
 

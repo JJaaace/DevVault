@@ -114,8 +114,10 @@ export function decorateProjectShowcase(project, index) {
   const preset = resolvePreset(project)
   const normalizedTitle = normalizeText(project.title)
   const isDevVaultProject = normalizedTitle.includes('devvault') || preset?.id === 'devvault'
-  const sourceImage = project.image || project.bannerImageUrl
-  const resolvedImage = sourceImage || preset?.image || buildFallbackImage(project)
+  const persistedImage = project.image || project.bannerImageUrl
+  const isAuthoritativeArtwork = ['CURATED', 'IMPORTED'].includes(project.bannerImageSource)
+  const sourceImage = isAuthoritativeArtwork ? persistedImage : ''
+  const resolvedImage = sourceImage || preset?.image || persistedImage || buildFallbackImage(project)
   const shouldForceDevVaultLogo = isDevVaultProject
     && (!sourceImage || normalizeText(sourceImage).includes('generic-product'))
 
@@ -138,7 +140,7 @@ export function decorateProjectShowcase(project, index) {
     techStack,
     github: project.githubUrl || preset?.github || '',
     demo: project.liveDemoUrl || preset?.demo || '',
-    featured: Boolean(preset?.featured) || Number(project.displayOrder) === 1 || index === 0,
+    featured: Boolean(project.featured),
     order: Number.isInteger(project.displayOrder) ? project.displayOrder : (preset?.order || index + 1),
     status: project.status || preset?.status || 'PLANNING',
     keyFeatures,

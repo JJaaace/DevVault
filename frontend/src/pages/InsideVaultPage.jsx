@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useAuth } from '@clerk/clerk-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DevVaultLogo } from '../components/branding/DevVaultLogo'
 import { VaultParticleField } from '../components/insideVault/VaultParticleField'
 import { VaultPortrait } from '../components/insideVault/VaultPortrait'
+import { authenticatedRequest } from '../lib/api'
+import { useGuestMode } from '../context/GuestModeContext'
 
 const introParagraph = `I'm a Computer Information Systems student at The Ohio State University and someone who genuinely enjoys building software that solves real problems.
 
@@ -11,6 +14,8 @@ Programming started as curiosity, but over time it became something I genuinely 
 DevVault isn't just my portfolio.
 
 It's where I document my growth, organize my projects, and continue pushing myself to become a better engineer.`
+
+const VAULT_PORTRAIT_STORAGE_KEY = 'devvault:inside-vault:portrait'
 
 const interestItems = [
   {
@@ -119,14 +124,111 @@ function HeroLine({ delay, children, className = '' }) {
   )
 }
 
-export function InsideVaultPage() {
-  const [activeInterest, setActiveInterest] = useState(interestItems[1].title)
+function InsideVaultPageContent({ getToken }) {
+  const { isGuestMode, portfolio } = useGuestMode()
+  const [workspace, setWorkspace] = useState(() => isGuestMode ? {
+    profile: portfolio.profile,
+    skills: portfolio.skills || [],
+    projects: portfolio.projects || [],
+    goals: portfolio.goals || [],
+  } : { profile: null, skills: [], projects: [], goals: [] })
+  const [activeInterest, setActiveInterest] = useState('')
   const [logoClickTimes, setLogoClickTimes] = useState([])
   const [showEasterEgg, setShowEasterEgg] = useState(false)
+  const portraitMigrationAttemptedRef = useRef(false)
+  useEffect(() => {
+    if (isGuestMode) return undefined
+    let cancelled = false
+    authenticatedRequest('/api/dashboard', {}, getToken)
+      .then((data) => {
+        if (cancelled) return
+        const next = data?.workspace || {}
+        setWorkspace({
+          profile: next.profile || null,
+          skills: Array.isArray(next.skills) ? next.skills : [],
+          projects: Array.isArray(next.projects) ? next.projects : [],
+          goals: Array.isArray(next.goals) ? next.goals : [],
+        })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [getToken, isGuestMode])
+
+  const saveProfileImage = useCallback(async (profileImageUrl) => {
+    if (isGuestMode) return workspace.profile
+    const savedProfile = await authenticatedRequest('/api/profile/image', {
+      method: 'PATCH',
+      body: JSON.stringify({ profileImageUrl }),
+    }, getToken)
+
+    setWorkspace((current) => ({
+      ...current,
+      profile: savedProfile,
+    }))
+    return savedProfile
+  }, [getToken, isGuestMode, workspace.profile])
+
+  useEffect(() => {
+    const profileImageUrl = workspace.profile?.profileImageUrl || ''
+    const canMigrateBrowserPortrait = !profileImageUrl || /^https:\/\/avatars\.githubusercontent\.com\//i.test(profileImageUrl)
+
+    if (isGuestMode || !workspace.profile || !canMigrateBrowserPortrait || portraitMigrationAttemptedRef.current || typeof window === 'undefined') {
+      return
+    }
+
+    const cachedPortrait = window.localStorage.getItem(VAULT_PORTRAIT_STORAGE_KEY) || ''
+    if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(cachedPortrait)) {
+      return
+    }
+
+    portraitMigrationAttemptedRef.current = true
+    const timeoutId = window.setTimeout(() => {
+      saveProfileImage(cachedPortrait).catch(() => {
+        portraitMigrationAttemptedRef.current = false
+      })
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [isGuestMode, saveProfileImage, workspace.profile])
+
+  const dynamicInterests = useMemo(() => {
+    const values = workspace.profile?.interests || []
+    if (!values.length) return interestItems
+    return values.map((title) => ({
+      title,
+      detail: interestItems.find((item) => item.title.toLowerCase() === String(title).toLowerCase())?.detail
+        || `${title} is part of the current learning and building focus documented in DevVault.`,
+    }))
+  }, [workspace.profile])
+
+  const dynamicTechnologies = useMemo(() => workspace.skills.length
+    ? [...workspace.skills]
+      .sort((left, right) => Number(right.projectsBuilt || 0) - Number(left.projectsBuilt || 0) || Number(right.yearsExperience || 0) - Number(left.yearsExperience || 0))
+      .slice(0, 9)
+      .map((skill) => ({ name: skill.name, detail: skill.notes || `${skill.experienceLevel.replace(/_/g, ' ').toLowerCase()} experience across ${skill.projectsBuilt || 0} linked project${skill.projectsBuilt === 1 ? '' : 's'}.` }))
+    : technologyItems, [workspace.skills])
+
+  const dynamicTimeline = useMemo(() => {
+    const byYear = new Map()
+    workspace.skills.forEach((skill) => {
+      if (!skill.firstUsedYear) return
+      const values = byYear.get(skill.firstUsedYear) || []
+      values.push(skill.name)
+      byYear.set(skill.firstUsedYear, values)
+    })
+    const values = [...byYear.entries()].sort((left, right) => left[0] - right[0]).map(([year, names]) => ({
+      year: String(year),
+      detail: `Started building with ${names.slice(0, 5).join(', ')}${names.length > 5 ? ', and more' : ''}.`,
+    }))
+    return values.length ? values : timelineItems
+  }, [workspace.skills])
+
   const activeInterestDetail = useMemo(
-    () => interestItems.find((item) => item.title === activeInterest),
-    [activeInterest],
+    () => dynamicInterests.find((item) => item.title === activeInterest) || dynamicInterests[0],
+    [activeInterest, dynamicInterests],
   )
+
+  const profile = workspace.profile
+  const publicGoals = workspace.goals.filter((goal) => goal.status === 'current' || goal.status === 'future').slice(0, 4)
 
   const handleLogoClick = () => {
     const now = Date.now()
@@ -160,7 +262,7 @@ export function InsideVaultPage() {
             </HeroLine>
 
             <HeroLine delay={0.4}>
-              <h2 className="inside-vault-headline">Hi, I&apos;m Jace.</h2>
+              <h2 className="inside-vault-headline">Hi, I&apos;m {profile?.firstName || 'a builder'}.</h2>
             </HeroLine>
 
             <HeroLine delay={0.58}>
@@ -168,7 +270,7 @@ export function InsideVaultPage() {
             </HeroLine>
 
             <HeroLine delay={0.76}>
-              <p className="inside-vault-intro-copy">{introParagraph}</p>
+              <p className="inside-vault-intro-copy">{profile?.bio || introParagraph}</p>
             </HeroLine>
           </div>
 
@@ -179,7 +281,14 @@ export function InsideVaultPage() {
               transition={{ duration: 0.8, delay: 0.72, ease: [0.22, 0.7, 0.2, 1] }}
               className="inside-vault-portrait-center"
             >
-              <VaultPortrait src="/profile/profile.jpg" alt="Portrait of Jace" />
+              <VaultPortrait
+                key={profile?.profileImageUrl || 'profile-picture-loading'}
+                src={profile?.profileImageUrl || '/profile/profile.jpg'}
+                alt={`Portrait of ${profile?.firstName || 'the developer'}`}
+                allowLocalOverride={!isGuestMode}
+                storageKey={VAULT_PORTRAIT_STORAGE_KEY}
+                onImageChange={isGuestMode ? undefined : saveProfileImage}
+              />
             </motion.div>
 
             {orbitCards.map((card, index) => (
@@ -231,7 +340,7 @@ export function InsideVaultPage() {
           <p className="section-eyebrow">Current Interests</p>
           <h3 className="inside-vault-section-title">What I am exploring right now</h3>
           <div className="inside-vault-chip-grid">
-            {interestItems.map((interest) => (
+            {dynamicInterests.map((interest) => (
               <button
                 key={interest.title}
                 type="button"
@@ -262,7 +371,7 @@ export function InsideVaultPage() {
           <p className="section-eyebrow">Favorite Technologies</p>
           <h3 className="inside-vault-section-title">Tools I love building with</h3>
           <div className="inside-vault-tech-grid">
-            {technologyItems.map((tech) => (
+            {dynamicTechnologies.map((tech) => (
               <motion.article
                 key={tech.name}
                 className="inside-vault-tech-card"
@@ -284,6 +393,7 @@ export function InsideVaultPage() {
             <p className="inside-vault-section-copy">I want to become the kind of software engineer who builds products that people genuinely enjoy using.</p>
             <p className="inside-vault-section-copy">I want to keep learning from experienced engineers, solve meaningful problems, and continue improving every year.</p>
             <p className="inside-vault-section-copy">More than anything, I want every project I build to be better than the last.</p>
+            {publicGoals.length ? <div className="inside-vault-command-list">{publicGoals.map((goal) => <span key={goal.id}>{goal.title}</span>)}</div> : null}
           </motion.article>
 
           <motion.article id="vault-command" className="inside-vault-glass-card" initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.2 }} transition={{ duration: 0.55, delay: 0.06 }}>
@@ -328,7 +438,7 @@ export function InsideVaultPage() {
 
           <div className="inside-vault-journey-line" aria-hidden="true" />
           <div className="inside-vault-timeline">
-            {timelineItems.map((item, index) => (
+            {dynamicTimeline.map((item, index) => (
               <motion.article
                 key={item.year}
                 className="inside-vault-timeline-item"
@@ -375,4 +485,14 @@ export function InsideVaultPage() {
       </AnimatePresence>
     </div>
   )
+}
+
+function AuthenticatedInsideVaultPage() {
+  const { getToken } = useAuth()
+  return <InsideVaultPageContent getToken={getToken} />
+}
+
+export function InsideVaultPage() {
+  const { isGuestMode } = useGuestMode()
+  return isGuestMode ? <InsideVaultPageContent getToken={async () => ''} /> : <AuthenticatedInsideVaultPage />
 }

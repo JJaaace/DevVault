@@ -30,6 +30,8 @@ function AmbientParticleNetworkComponent() {
 
     let animationFrame = null
     let particles = []
+    let pageVisible = !document.hidden
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     const resize = () => {
       const width = window.innerWidth
@@ -46,6 +48,7 @@ function AmbientParticleNetworkComponent() {
     }
 
     const draw = (timestamp) => {
+      animationFrame = null
       const width = window.innerWidth
       const height = window.innerHeight
 
@@ -92,15 +95,34 @@ function AmbientParticleNetworkComponent() {
         context.fill()
       })
 
-      animationFrame = window.requestAnimationFrame(draw)
+      if (!reducedMotion && pageVisible) {
+        animationFrame = window.requestAnimationFrame(draw)
+      }
+    }
+
+    const handleVisibility = () => {
+      pageVisible = !document.hidden
+      if (pageVisible && !reducedMotion && !animationFrame) animationFrame = window.requestAnimationFrame(draw)
+      if (!pageVisible && animationFrame) {
+        window.cancelAnimationFrame(animationFrame)
+        animationFrame = null
+      }
+    }
+
+    const handleResize = () => {
+      resize()
+      if (reducedMotion) draw(0)
     }
 
     resize()
-    animationFrame = window.requestAnimationFrame(draw)
-    window.addEventListener('resize', resize)
+    if (reducedMotion) draw(0)
+    else animationFrame = window.requestAnimationFrame(draw)
+    window.addEventListener('resize', handleResize)
+    document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
-      window.removeEventListener('resize', resize)
+      window.removeEventListener('resize', handleResize)
+      document.removeEventListener('visibilitychange', handleVisibility)
       if (animationFrame) {
         window.cancelAnimationFrame(animationFrame)
       }

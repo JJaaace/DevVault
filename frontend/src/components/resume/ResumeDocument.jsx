@@ -42,7 +42,7 @@ function ResumeTagList({ items = [] }) {
   )
 }
 
-export function ResumeDocument({ profile, projects = [], skills = [], onPrint, publicMode = false }) {
+export function ResumeDocument({ profile, projects = [], skills = [], certifications = [], onPrint, publicMode = false }) {
   if (!profile) {
     return null
   }
@@ -150,6 +150,22 @@ export function ResumeDocument({ profile, projects = [], skills = [], onPrint, p
                 {profile.websiteUrl ? <a href={profile.websiteUrl} target="_blank" rel="noreferrer">Website</a> : null}
               </div>
             </Section>
+
+            {certifications.length ? (
+              <Section eyebrow="Credentials" title="Certifications">
+                <div className="resume-list">
+                  {certifications.slice(0, 6).map((certification) => (
+                    <div key={certification.id} className="resume-item">
+                      <div className="resume-item-header">
+                        <h3>{certification.name}</h3>
+                        <span>{certification.year}</span>
+                      </div>
+                      <p className="resume-muted">{certification.provider} · {certification.status.replace('-', ' ')}</p>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            ) : null}
           </aside>
         </div>
       </article>

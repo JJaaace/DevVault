@@ -1,8 +1,11 @@
+import { useAuth } from '@clerk/clerk-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { DevVaultLogo } from '../components/branding/DevVaultLogo'
 import { SectionHeader } from '../components/SectionHeader'
+import { createGoal, fetchGoals, reorderGoals, updateGoal } from '../lib/goalsApi'
 
 const GOAL_CATEGORIES = [
   { key: 'Career', label: 'Career', icon: '💼' },
@@ -12,7 +15,9 @@ const GOAL_CATEGORIES = [
   { key: 'Personal Development', label: 'Personal Development', icon: '🌿' },
 ]
 
-const INITIAL_GOALS = [
+// Historical one-time migration snapshot. Application state comes only from /api/goals.
+// eslint-disable-next-line react-refresh/only-export-components
+export const LEGACY_GOALS_MIGRATION_SNAPSHOT = [
   {
     id: 'summer-software-engineering-internship',
     title: 'Summer Software Engineering Internship',
@@ -214,15 +219,6 @@ const INITIAL_GOALS = [
     ],
     accent: 'amber',
   },
-]
-
-const ROADMAP_STEPS = [
-  { label: 'NOW', title: 'Finish DevVault' },
-  { label: 'NEXT', title: 'Deploy Portfolio' },
-  { label: 'THEN', title: 'AWS Cloud Practitioner' },
-  { label: 'THEN', title: 'Summer 2027 Internship' },
-  { label: 'THEN', title: 'AWS Solutions Architect' },
-  { label: 'LAST', title: 'Graduate Ohio State' },
 ]
 
 const VISION_CARDS = [
@@ -553,6 +549,7 @@ function GoalEditorModal({ goal, onSave, onClose }) {
     relatedCertificationsText: (goal?.relatedCertifications || []).join('\n'),
     relatedTechnologiesText: (goal?.relatedTechnologies || []).join('\n'),
     milestonesText: (goal?.milestones || []).map((milestone) => `${milestone.status}|${milestone.title}`).join('\n'),
+    publicVisible: goal?.publicVisible ?? false,
   }))
 
   return (
@@ -592,6 +589,10 @@ function GoalEditorModal({ goal, onSave, onClose }) {
           <label className="field-label lg:col-span-2">
             <strong>Description</strong>
             <textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={3} className="field-textarea" />
+          </label>
+          <label className="flex cursor-pointer items-center gap-3 rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3 lg:col-span-2">
+            <input type="checkbox" checked={form.publicVisible} onChange={(event) => setForm((current) => ({ ...current, publicVisible: event.target.checked }))} className="h-4 w-4 accent-[var(--color-brand)]" />
+            <span className="text-sm text-[var(--color-text-soft)]">Visible on public portfolio</span>
           </label>
           <label className="field-label lg:col-span-2">
             <strong>Why it matters</strong>
@@ -641,6 +642,7 @@ function GoalEditorModal({ goal, onSave, onClose }) {
               relatedCertifications: normalizeTextList(form.relatedCertificationsText),
               relatedTechnologies: normalizeTextList(form.relatedTechnologiesText),
               milestones: parseMilestones(form.milestonesText),
+              publicVisible: form.publicVisible,
             })}
             className="button-primary px-4 py-2 text-sm"
           >
@@ -705,16 +707,45 @@ function GoalReorderModal({ goals, onSave, onClose }) {
 
 export function GoalsPage() {
   const navigate = useNavigate()
-  const [goals, setGoals] = useState(() => INITIAL_GOALS)
-  const [selectedGoalId, setSelectedGoalId] = useState(() => INITIAL_GOALS[0].id)
+  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const [goals, setGoals] = useState([])
+  const [searchParams] = useSearchParams()
+  const requestedGoalId = Number(searchParams.get('goal')) || null
+  const [selectedGoalId, setSelectedGoalId] = useState(requestedGoalId)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [orbitPaused, setOrbitPaused] = useState(false)
   const [editorGoal, setEditorGoal] = useState(null)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [isReorderOpen, setIsReorderOpen] = useState(false)
 
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return
+    let cancelled = false
+    fetchGoals(getToken)
+      .then((items) => {
+        if (cancelled) return
+        const next = Array.isArray(items) ? items : []
+        setGoals(next)
+        setSelectedGoalId((current) => next.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : (current || next[0]?.id || null))
+        setError('')
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(loadError.message || 'Unable to load goals.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [getToken, isLoaded, isSignedIn, requestedGoalId])
+
   const activeGoals = useMemo(() => goals.filter((goal) => goal.status !== 'archived').sort((left, right) => left.displayOrder - right.displayOrder), [goals])
   const archivedGoals = useMemo(() => goals.filter((goal) => goal.status === 'archived'), [goals])
   const selectedGoal = useMemo(() => goals.find((goal) => goal.id === selectedGoalId) || activeGoals[0] || goals[0], [activeGoals, goals, selectedGoalId])
+  const roadmapSteps = useMemo(() => activeGoals.slice(0, 6).map((goal, index, values) => ({
+    label: index === 0 ? 'NOW' : index === 1 ? 'NEXT' : index === values.length - 1 ? 'LAST' : 'THEN',
+    title: goal.title,
+  })), [activeGoals])
 
   const categories = useMemo(() => GOAL_CATEGORIES.map((category) => {
     const categoryGoals = goals.filter((goal) => goal.category === category.key)
@@ -743,61 +774,57 @@ export function GoalsPage() {
     setIsEditorOpen(true)
   }
 
-  const saveGoal = (nextGoal) => {
-    setGoals((current) => {
-      if (nextGoal.id) {
-        return current.map((goal) => (goal.id === nextGoal.id ? nextGoal : goal))
-      }
-
-      const newGoal = {
-        ...nextGoal,
-        id: `goal-${Date.now()}`,
-        displayOrder: current.length + 1,
-        pinned: false,
-        status: nextGoal.status || 'future',
-      }
-
-      return [...current, newGoal]
-    })
-
-    setIsEditorOpen(false)
-    setEditorGoal(null)
+  const saveGoal = async (nextGoal) => {
+    try {
+      const saved = nextGoal.id
+        ? await updateGoal(nextGoal.id, nextGoal, getToken)
+        : await createGoal({ ...nextGoal, displayOrder: goals.length + 1 }, getToken)
+      setGoals((current) => nextGoal.id
+        ? current.map((goal) => goal.id === saved.id ? saved : goal)
+        : [...current, saved])
+      setSelectedGoalId(saved.id)
+      setIsEditorOpen(false)
+      setEditorGoal(null)
+      toast.success(nextGoal.id ? 'Goal updated.' : 'Goal added.')
+    } catch (saveError) {
+      toast.error(saveError.message || 'Unable to save goal.')
+    }
   }
 
-  const togglePinGoal = (goalId = selectedGoal?.id) => {
+  const togglePinGoal = async (goalId = selectedGoal?.id) => {
     if (!goalId) {
       return
     }
 
-    setGoals((current) => current.map((goal) => (goal.id === goalId ? { ...goal, pinned: !goal.pinned } : goal)))
+    const goal = goals.find((item) => item.id === goalId)
+    if (!goal) return
+    try {
+      const saved = await updateGoal(goalId, { ...goal, pinned: !goal.pinned }, getToken)
+      setGoals((current) => current.map((item) => item.id === goalId ? saved : item))
+    } catch (saveError) { toast.error(saveError.message || 'Unable to update goal.') }
   }
 
-  const toggleArchiveGoal = (goalId = selectedGoal?.id) => {
+  const toggleArchiveGoal = async (goalId = selectedGoal?.id) => {
     if (!goalId) {
       return
     }
 
-    setGoals((current) => current.map((goal) => {
-      if (goal.id !== goalId) {
-        return goal
-      }
-
-      const nextStatus = goal.status === 'archived' ? 'future' : 'archived'
-      return { ...goal, status: nextStatus }
-    }))
+    const goal = goals.find((item) => item.id === goalId)
+    if (!goal) return
+    try {
+      const saved = await updateGoal(goalId, { ...goal, status: goal.status === 'archived' ? 'future' : 'archived' }, getToken)
+      setGoals((current) => current.map((item) => item.id === goalId ? saved : item))
+      if (saved.status === 'archived') setSelectedGoalId(activeGoals.find((item) => item.id !== goalId)?.id || null)
+    } catch (saveError) { toast.error(saveError.message || 'Unable to update goal.') }
   }
 
-  const saveReorder = (orderedGoals) => {
-    setGoals((current) => {
-      const orderMap = new Map(orderedGoals.map((goal, index) => [goal.id, index + 1]))
-      return current.map((goal) => (
-        goal.status === 'archived'
-          ? goal
-          : { ...goal, displayOrder: orderMap.get(goal.id) || goal.displayOrder }
-      ))
-    })
-
-    setIsReorderOpen(false)
+  const saveReorder = async (orderedGoals) => {
+    try {
+      const saved = await reorderGoals(orderedGoals.map((goal) => goal.id), getToken)
+      setGoals(saved)
+      setIsReorderOpen(false)
+      toast.success('Goal order saved.')
+    } catch (saveError) { toast.error(saveError.message || 'Unable to reorder goals.') }
   }
 
   const openTechnology = (technology) => {
@@ -810,6 +837,8 @@ export function GoalsPage() {
 
   return (
     <div className="page-shell page-shell--wide page-stack pb-14 goals-page">
+      {loading ? <p className="surface-card px-5 py-4 text-sm text-[var(--color-text-soft)]">Loading goals…</p> : null}
+      {error ? <p className="surface-card border-[#9d4c32] px-5 py-4 text-sm text-[#f2a28a]">{error}</p> : null}
       <section className="surface-card surface-card--hero goals-hero overflow-hidden px-6 py-8 md:px-10 md:py-10 fade-in-up">
         <GoalAtmosphere />
         <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -841,7 +870,7 @@ export function GoalsPage() {
               description="A horizontal route for the next important milestones on the path ahead."
             />
             <div className="mt-5 flex gap-4 overflow-x-auto pb-2">
-              {ROADMAP_STEPS.map((step, index) => (
+              {roadmapSteps.map((step, index) => (
                 <motion.div
                   key={`${step.label}-${step.title}`}
                   initial={{ opacity: 0, y: 16 }}
@@ -852,7 +881,7 @@ export function GoalsPage() {
                 >
                   <p className="section-eyebrow">{step.label}</p>
                   <p className="mt-3 text-lg font-semibold tracking-tight text-[var(--color-text)]">{step.title}</p>
-                  {index < ROADMAP_STEPS.length - 1 ? <p className="mt-4 text-2xl text-[var(--color-brand-ink)]">↓</p> : null}
+                  {index < roadmapSteps.length - 1 ? <p className="mt-4 text-2xl text-[var(--color-brand-ink)]">↓</p> : null}
                 </motion.div>
               ))}
             </div>

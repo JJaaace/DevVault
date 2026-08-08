@@ -1,14 +1,5 @@
-let prisma = null
-
-try {
-  const { PrismaClient } = require('@prisma/client')
-  const { PrismaPg } = require('@prisma/adapter-pg')
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
-  prisma = new PrismaClient({ adapter })
-} catch (error) {
-  prisma = null
-}
-
+const { prisma } = require('../db/prisma')
+const { isPostgresMode } = require('../config/persistence')
 const { getLocalStore, updateLocalStore } = require('../services/localStore')
 const { getGitHubSyncState } = require('../services/githubSyncService')
 const { sendSuccess, sendCreated, sendNoContent, sendError } = require('../utils/http')
@@ -100,6 +91,18 @@ function normalizeInteger(value) {
   return Number.isInteger(parsed) ? parsed : null
 }
 
+function validateProfileImage(profileImageUrl) {
+  if (typeof profileImageUrl !== 'string' || !/^data:image\/(png|jpe?g|webp);base64,/i.test(profileImageUrl)) {
+    return 'Profile image must be a PNG, JPG, JPEG, or WEBP upload.'
+  }
+
+  if (profileImageUrl.length > 10 * 1024 * 1024) {
+    return 'Profile image must be 7MB or smaller.'
+  }
+
+  return null
+}
+
 function buildProfilePayload(payload, clerkUserId) {
   return {
     clerkUserId,
@@ -126,6 +129,8 @@ function buildProfilePayload(payload, clerkUserId) {
     linkedinUrl: normalizeText(payload.linkedinUrl),
     websiteUrl: normalizeText(payload.websiteUrl),
     twitterUrl: normalizeText(payload.twitterUrl),
+    portfolioEnabled: payload.portfolioEnabled === undefined ? true : Boolean(payload.portfolioEnabled),
+    currentFocus: normalizeText(payload.currentFocus),
   }
 }
 
@@ -137,26 +142,128 @@ function findMemoryProfileByUsername(username) {
   return getLocalStore().profiles.find((profile) => profile.username === username) || null
 }
 
+function isEmbeddedImage(value) {
+  return typeof value === 'string' && /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(value)
+}
+
 function serializePublicProfile(profile) {
   if (!profile) {
     return null
   }
 
-  const { clerkUserId, ...publicProfile } = profile
-  return publicProfile
+  return {
+    username: profile.username,
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    bio: profile.bio,
+    profileImageUrl: isEmbeddedImage(profile.profileImageUrl)
+      ? `/api/public/portfolio/${encodeURIComponent(profile.username)}/profile-image`
+      : profile.profileImageUrl,
+    school: profile.school,
+    graduationYear: profile.graduationYear,
+    major: profile.major,
+    location: profile.location,
+    currentRole: profile.currentRole,
+    favoriteLanguage: profile.favoriteLanguage,
+    favoriteFramework: profile.favoriteFramework,
+    yearsCoding: profile.yearsCoding,
+    interests: profile.interests,
+    tagline: profile.tagline,
+    pronouns: profile.pronouns,
+    openToWork: profile.openToWork,
+    jobType: profile.jobType,
+    currentFocus: profile.currentFocus,
+    githubUrl: profile.githubUrl,
+    linkedinUrl: profile.linkedinUrl,
+    websiteUrl: profile.websiteUrl,
+    twitterUrl: profile.twitterUrl,
+    updatedAt: profile.updatedAt,
+  }
 }
 
-function serializePublicProject(project) {
-  const { ownerClerkUserId, ...publicProject } = project
-  return publicProject
+function serializePublicProject(project, username) {
+  return {
+    id: project.id,
+    displayOrder: project.displayOrder,
+    title: project.title,
+    description: project.description,
+    githubUrl: project.githubUrl,
+    githubDescription: project.githubDescription,
+    githubStars: project.githubStars,
+    githubForks: project.githubForks,
+    githubLanguages: project.githubLanguages,
+    githubTopics: project.githubTopics,
+    liveDemoUrl: project.liveDemoUrl,
+    bannerImageUrl: isEmbeddedImage(project.bannerImageUrl)
+      ? `/api/public/portfolio/${encodeURIComponent(username)}/projects/${project.id}/artwork`
+      : project.bannerImageUrl,
+    bannerImageSource: project.bannerImageSource,
+    accentTone: project.accentTone,
+    techStack: project.techStack,
+    keyFeatures: project.keyFeatures,
+    status: project.status,
+    dateStarted: project.dateStarted,
+    featured: project.featured,
+  }
 }
 
 function serializePublicSkill(skill) {
-  const { ownerClerkUserId, relatedProjects = [], ...publicSkill } = skill
-
   return {
-    ...publicSkill,
-    relatedProjects: relatedProjects.map(serializePublicProject),
+    id: skill.id,
+    name: skill.name,
+    technologyKey: skill.technologyKey,
+    category: skill.category,
+    experienceLevel: skill.experienceLevel,
+    yearsExperience: skill.yearsExperience,
+    firstUsedYear: skill.firstUsedYear,
+    projectsBuilt: skill.projectsBuilt,
+    color: skill.color,
+    lastUsed: skill.lastUsed,
+    relatedProjects: (skill.relatedProjects || []).map((project) => ({
+      id: project.id,
+      title: project.title,
+      status: project.status,
+      featured: project.featured,
+    })),
+  }
+}
+
+function serializePublicGoal(goal) {
+  return {
+    id: goal.id,
+    title: goal.title,
+    category: goal.category,
+    status: goal.status,
+    targetCompletion: goal.targetCompletion,
+    description: goal.description,
+    relatedProjectNames: goal.relatedProjectNames || [],
+    relatedCertificationNames: goal.relatedCertificationNames || [],
+    relatedTechnologies: goal.relatedTechnologies || [],
+  }
+}
+
+function serializePublicCertification(certification, username) {
+  const hasAsset = Boolean(certification.assetType)
+  return {
+    id: certification.id,
+    name: certification.name,
+    organization: certification.organization,
+    provider: certification.provider,
+    status: certification.status,
+    issueDate: certification.issueDate,
+    year: certification.year,
+    credentialId: certification.credentialId,
+    credentialUrl: certification.credentialUrl,
+    verifyUrl: certification.verifyUrl,
+    logo: certification.logo,
+    accentColor: certification.accentColor,
+    skillsGained: certification.skillsGained || [],
+    technologies: certification.technologies || [],
+    associatedProjects: certification.associatedProjects || [],
+    featured: certification.featured,
+    displayOrder: certification.displayOrder,
+    assetType: certification.assetType,
+    assetUrl: hasAsset ? `/api/public/portfolio/${encodeURIComponent(username)}/certifications/${certification.id}/asset` : null,
   }
 }
 
@@ -172,23 +279,11 @@ async function getPublicPortfolio(req, res) {
       }, 'USERNAME_REQUIRED', 'Username is required.')
     }
 
-    let profile = null
+    const profile = isPostgresMode()
+      ? await prisma.profile.findUnique({ where: { username } })
+      : findMemoryProfileByUsername(username)
 
-    if (prisma) {
-      try {
-        profile = await prisma.profile.findUnique({
-          where: { username },
-        })
-      } catch (error) {
-        // fall through to memory storage
-      }
-    }
-
-    if (!profile) {
-      profile = findMemoryProfileByUsername(username)
-    }
-
-    if (!profile) {
+    if (!profile || !profile.portfolioEnabled) {
       return sendError(res, {
         statusCode: 404,
         code: 'PORTFOLIO_NOT_FOUND',
@@ -198,19 +293,118 @@ async function getPublicPortfolio(req, res) {
 
     const { listProjects } = require('../services/projectService')
     const { listSkills } = require('../services/skillService')
+    const { listGoals } = require('../services/goalService')
+    const { listCertifications } = require('../services/certificationService')
+    const { getResumeMetadata } = require('../services/resumeService')
 
-    const [projects, skills] = await Promise.all([
-      listProjects(profile.clerkUserId),
-      listSkills(profile.clerkUserId),
+    const [projects, skills, goals, certifications, resume] = await Promise.all([
+      listProjects(profile.clerkUserId, { publicOnly: true }),
+      listSkills(profile.clerkUserId, { publicOnly: true }),
+      listGoals(profile.clerkUserId, { publicOnly: true }),
+      listCertifications(profile.clerkUserId, { publicOnly: true }),
+      getResumeMetadata(profile.clerkUserId),
     ])
 
     return sendSuccess(res, {
       profile: serializePublicProfile(profile),
-      projects: projects.filter((project) => project.status !== 'ARCHIVED').map(serializePublicProject),
+      projects: projects.filter((project) => project.status !== 'ARCHIVED').map((project) => serializePublicProject(project, profile.username)),
       skills: skills.map(serializePublicSkill),
+      goals: goals.map(serializePublicGoal),
+      certifications: certifications.map((certification) => serializePublicCertification(certification, profile.username)),
+      resume: resume.uploaded ? {
+        uploaded: true,
+        fileName: resume.fileName,
+        lastUpdated: resume.lastUpdated,
+        byteSize: resume.byteSize,
+        fileUrl: `/api/public/portfolio/${encodeURIComponent(profile.username)}/resume?v=${new Date(resume.lastUpdated).getTime() || Date.now()}`,
+      } : { uploaded: false, fileName: null, lastUpdated: null, byteSize: 0, fileUrl: null },
     })
   } catch (error) {
     return sendError(res, error, 'PORTFOLIO_GET_FAILED', 'Unable to load portfolio.')
+  }
+}
+
+async function getPublicResume(req, res) {
+  try {
+    const username = String(req.params.username || '').trim()
+    const profile = isPostgresMode() ? await prisma.profile.findUnique({ where: { username } }) : findMemoryProfileByUsername(username)
+    if (!profile || !profile.portfolioEnabled) {
+      return sendError(res, { statusCode: 404, message: 'Resume not found.' }, 'PUBLIC_RESUME_NOT_FOUND', 'Resume not found.')
+    }
+    const { getResumeFileInfo } = require('../services/resumeService')
+    const file = await getResumeFileInfo(profile.clerkUserId)
+    const safeFileName = String(file.fileName || 'resume.pdf').replace(/[\r\n"]/g, '')
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Length', String(file.content.length))
+    res.setHeader('Content-Disposition', `inline; filename="${safeFileName}"`)
+    res.setHeader('Cache-Control', 'public, max-age=300')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    return res.status(200).send(file.content)
+  } catch (error) {
+    return sendError(res, error, 'PUBLIC_RESUME_GET_FAILED', 'Unable to load public resume.')
+  }
+}
+
+async function getPublicCertificationAsset(req, res) {
+  try {
+    const username = typeof req.params.username === 'string' ? req.params.username.trim() : ''
+    const profile = isPostgresMode()
+      ? await prisma.profile.findUnique({ where: { username } })
+      : findMemoryProfileByUsername(username)
+
+    if (!profile || !profile.portfolioEnabled) {
+      return sendError(res, { statusCode: 404, message: 'Certificate asset not found.' }, 'CERTIFICATION_ASSET_NOT_FOUND', 'Certificate asset not found.')
+    }
+
+    const { getPublicCertificationAsset: loadAsset } = require('../services/certificationService')
+    const file = await loadAsset(profile.clerkUserId, req.params.certificationId)
+    const canPreviewInline = file.mimeType === 'application/pdf' || /^image\/(png|jpe?g|webp|gif|avif)$/i.test(file.mimeType)
+    res.setHeader('Content-Type', file.mimeType)
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Length', String(file.content.length))
+    res.setHeader('Content-Disposition', `${canPreviewInline ? 'inline' : 'attachment'}; filename="${String(file.fileName).replace(/[\r\n"]/g, '')}"`)
+    return res.status(200).send(file.content)
+  } catch (error) {
+    return sendError(res, error, 'CERTIFICATION_ASSET_GET_FAILED', 'Unable to load certificate asset.')
+  }
+}
+
+function sendEmbeddedPublicImage(res, dataUrl, fallbackName) {
+  const match = String(dataUrl || '').match(/^data:(image\/(?:png|jpe?g|webp|gif|avif));base64,([A-Za-z0-9+/=\s]+)$/i)
+  if (!match) {
+    return sendError(res, { statusCode: 404, message: 'Public image not found.' }, 'PUBLIC_IMAGE_NOT_FOUND', 'Public image not found.')
+  }
+  const content = Buffer.from(match[2].replace(/\s+/g, ''), 'base64')
+  res.setHeader('Content-Type', match[1].toLowerCase())
+  res.setHeader('Content-Length', String(content.length))
+  res.setHeader('Content-Disposition', `inline; filename="${fallbackName}"`)
+  res.setHeader('Cache-Control', 'public, max-age=300')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  return res.status(200).send(content)
+}
+
+async function getPublicProfileImage(req, res) {
+  try {
+    const username = String(req.params.username || '').trim()
+    const profile = isPostgresMode() ? await prisma.profile.findUnique({ where: { username } }) : findMemoryProfileByUsername(username)
+    if (!profile || !profile.portfolioEnabled) return sendError(res, { statusCode: 404, message: 'Public image not found.' }, 'PUBLIC_IMAGE_NOT_FOUND', 'Public image not found.')
+    return sendEmbeddedPublicImage(res, profile.profileImageUrl, 'profile-image')
+  } catch (error) {
+    return sendError(res, error, 'PUBLIC_IMAGE_GET_FAILED', 'Unable to load public image.')
+  }
+}
+
+async function getPublicProjectArtwork(req, res) {
+  try {
+    const username = String(req.params.username || '').trim()
+    const profile = isPostgresMode() ? await prisma.profile.findUnique({ where: { username } }) : findMemoryProfileByUsername(username)
+    if (!profile || !profile.portfolioEnabled) return sendError(res, { statusCode: 404, message: 'Public image not found.' }, 'PUBLIC_IMAGE_NOT_FOUND', 'Public image not found.')
+    const { listProjects } = require('../services/projectService')
+    const project = (await listProjects(profile.clerkUserId, { publicOnly: true })).find((item) => String(item.id) === String(req.params.projectId) && item.status !== 'ARCHIVED')
+    if (!project) return sendError(res, { statusCode: 404, message: 'Public image not found.' }, 'PUBLIC_IMAGE_NOT_FOUND', 'Public image not found.')
+    return sendEmbeddedPublicImage(res, project.bannerImageUrl, `project-${project.id}`)
+  } catch (error) {
+    return sendError(res, error, 'PUBLIC_IMAGE_GET_FAILED', 'Unable to load public image.')
   }
 }
 
@@ -218,30 +412,9 @@ async function getProfile(req, res) {
   try {
     const githubSyncState = getGitHubSyncState(req.auth.userId)
 
-    if (prisma) {
-      try {
-        const profile = await prisma.profile.findUnique({
-          where: { clerkUserId: req.auth.userId },
-        })
-
-        if (!profile) {
-          return sendError(res, {
-            statusCode: 404,
-            code: 'PROFILE_NOT_FOUND',
-            message: 'Profile not found.',
-          }, 'PROFILE_NOT_FOUND', 'Profile not found.')
-        }
-
-        return sendSuccess(res, {
-          ...profile,
-          githubSyncState,
-        })
-      } catch (error) {
-        // fall through to in-memory storage when Prisma is unavailable or unreachable
-      }
-    }
-
-    const profile = findMemoryProfile(req.auth.userId)
+    const profile = isPostgresMode()
+      ? await prisma.profile.findUnique({ where: { clerkUserId: req.auth.userId } })
+      : findMemoryProfile(req.auth.userId)
     if (!profile) {
       return sendError(res, {
         statusCode: 404,
@@ -271,28 +444,23 @@ async function createProfile(req, res) {
       }, 'PROFILE_VALIDATION_FAILED', 'Invalid profile data.')
     }
 
-    if (prisma) {
-      try {
-        const existing = await prisma.profile.findUnique({
-          where: { clerkUserId: req.auth.userId },
-        })
+    if (isPostgresMode()) {
+      const existing = await prisma.profile.findUnique({
+        where: { clerkUserId: req.auth.userId },
+      })
 
-        if (existing) {
-          return sendError(res, {
-            statusCode: 409,
-            code: 'PROFILE_EXISTS',
-            message: 'Profile already exists.',
-          }, 'PROFILE_EXISTS', 'Profile already exists.')
-        }
-
-        const profile = await prisma.profile.create({
-          data: buildProfilePayload(req.body, req.auth.userId),
-        })
-
-        return sendCreated(res, profile)
-      } catch (error) {
-        // fall through to in-memory storage
+      if (existing) {
+        return sendError(res, {
+          statusCode: 409,
+          code: 'PROFILE_EXISTS',
+          message: 'Profile already exists.',
+        }, 'PROFILE_EXISTS', 'Profile already exists.')
       }
+
+      const profile = await prisma.profile.create({
+        data: buildProfilePayload(req.body, req.auth.userId),
+      })
+      return sendCreated(res, profile)
     }
 
     if (findMemoryProfile(req.auth.userId)) {
@@ -301,6 +469,15 @@ async function createProfile(req, res) {
         code: 'PROFILE_EXISTS',
         message: 'Profile already exists.',
       }, 'PROFILE_EXISTS', 'Profile already exists.')
+    }
+
+    const usernameOwner = findMemoryProfileByUsername(req.body.username.trim())
+    if (usernameOwner) {
+      return sendError(res, {
+        statusCode: 409,
+        code: 'USERNAME_TAKEN',
+        message: 'Username is already in use.',
+      }, 'USERNAME_TAKEN', 'Username is already in use.')
     }
 
     const profile = buildProfilePayload(req.body, req.auth.userId)
@@ -326,29 +503,24 @@ async function updateProfile(req, res) {
       }, 'PROFILE_VALIDATION_FAILED', 'Invalid profile data.')
     }
 
-    if (prisma) {
-      try {
-        const existing = await prisma.profile.findUnique({
-          where: { clerkUserId: req.auth.userId },
-        })
+    if (isPostgresMode()) {
+      const existing = await prisma.profile.findUnique({
+        where: { clerkUserId: req.auth.userId },
+      })
 
-        if (!existing) {
-          return sendError(res, {
-            statusCode: 404,
-            code: 'PROFILE_NOT_FOUND',
-            message: 'Profile not found.',
-          }, 'PROFILE_NOT_FOUND', 'Profile not found.')
-        }
-
-        const profile = await prisma.profile.update({
-          where: { clerkUserId: req.auth.userId },
-          data: buildProfilePayload(req.body, req.auth.userId),
-        })
-
-        return sendSuccess(res, profile)
-      } catch (error) {
-        // fall through to in-memory storage
+      if (!existing) {
+        return sendError(res, {
+          statusCode: 404,
+          code: 'PROFILE_NOT_FOUND',
+          message: 'Profile not found.',
+        }, 'PROFILE_NOT_FOUND', 'Profile not found.')
       }
+
+      const profile = await prisma.profile.update({
+        where: { clerkUserId: req.auth.userId },
+        data: buildProfilePayload(req.body, req.auth.userId),
+      })
+      return sendSuccess(res, profile)
     }
 
     const existing = findMemoryProfile(req.auth.userId)
@@ -358,6 +530,15 @@ async function updateProfile(req, res) {
         code: 'PROFILE_NOT_FOUND',
         message: 'Profile not found.',
       }, 'PROFILE_NOT_FOUND', 'Profile not found.')
+    }
+
+    const usernameOwner = findMemoryProfileByUsername(req.body.username.trim())
+    if (usernameOwner && usernameOwner.clerkUserId !== req.auth.userId) {
+      return sendError(res, {
+        statusCode: 409,
+        code: 'USERNAME_TAKEN',
+        message: 'Username is already in use.',
+      }, 'USERNAME_TAKEN', 'Username is already in use.')
     }
 
     const updatedProfile = {
@@ -378,30 +559,74 @@ async function updateProfile(req, res) {
   }
 }
 
+async function updateProfileImage(req, res) {
+  try {
+    const profileImageUrl = typeof req.body?.profileImageUrl === 'string' ? req.body.profileImageUrl.trim() : ''
+    const validationError = validateProfileImage(profileImageUrl)
+
+    if (validationError) {
+      return sendError(res, {
+        statusCode: 400,
+        code: 'PROFILE_IMAGE_VALIDATION_FAILED',
+        message: validationError,
+        details: { profileImageUrl: validationError },
+      }, 'PROFILE_IMAGE_VALIDATION_FAILED', validationError)
+    }
+
+    if (isPostgresMode()) {
+      const existing = await prisma.profile.findUnique({ where: { clerkUserId: req.auth.userId } })
+      if (!existing) {
+        return sendError(res, {
+          statusCode: 404,
+          code: 'PROFILE_NOT_FOUND',
+          message: 'Profile not found.',
+        }, 'PROFILE_NOT_FOUND', 'Profile not found.')
+      }
+
+      const profile = await prisma.profile.update({
+        where: { clerkUserId: req.auth.userId },
+        data: { profileImageUrl },
+      })
+      return sendSuccess(res, profile)
+    }
+
+    const existing = findMemoryProfile(req.auth.userId)
+    if (!existing) {
+      return sendError(res, {
+        statusCode: 404,
+        code: 'PROFILE_NOT_FOUND',
+        message: 'Profile not found.',
+      }, 'PROFILE_NOT_FOUND', 'Profile not found.')
+    }
+
+    const updatedProfile = { ...existing, profileImageUrl, updatedAt: new Date() }
+    updateLocalStore((store) => ({
+      ...store,
+      profiles: store.profiles.map((profile) => profile.clerkUserId === req.auth.userId ? updatedProfile : profile),
+    }))
+    return sendSuccess(res, updatedProfile)
+  } catch (error) {
+    return sendError(res, error, 'PROFILE_IMAGE_UPDATE_FAILED', 'Unable to save profile picture.')
+  }
+}
+
 async function deleteProfile(req, res) {
   try {
-    if (prisma) {
-      try {
-        const existing = await prisma.profile.findUnique({
-          where: { clerkUserId: req.auth.userId },
-        })
+    if (isPostgresMode()) {
+      const existing = await prisma.profile.findUnique({
+        where: { clerkUserId: req.auth.userId },
+      })
 
-        if (!existing) {
-          return sendError(res, {
-            statusCode: 404,
-            code: 'PROFILE_NOT_FOUND',
-            message: 'Profile not found.',
-          }, 'PROFILE_NOT_FOUND', 'Profile not found.')
-        }
-
-        await prisma.profile.delete({
-          where: { clerkUserId: req.auth.userId },
-        })
-
-        return sendNoContent(res)
-      } catch (error) {
-        // fall through to in-memory storage
+      if (!existing) {
+        return sendError(res, {
+          statusCode: 404,
+          code: 'PROFILE_NOT_FOUND',
+          message: 'Profile not found.',
+        }, 'PROFILE_NOT_FOUND', 'Profile not found.')
       }
+
+      await prisma.profile.delete({ where: { clerkUserId: req.auth.userId } })
+      return sendNoContent(res)
     }
 
     const existing = findMemoryProfile(req.auth.userId)
@@ -426,7 +651,12 @@ async function deleteProfile(req, res) {
 module.exports = {
   getProfile,
   getPublicPortfolio,
+  getPublicCertificationAsset,
+  getPublicProfileImage,
+  getPublicProjectArtwork,
+  getPublicResume,
   createProfile,
   updateProfile,
+  updateProfileImage,
   deleteProfile,
 }

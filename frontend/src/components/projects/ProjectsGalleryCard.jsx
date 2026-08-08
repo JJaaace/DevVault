@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import { DevVaultLogo } from '../branding/DevVaultLogo'
 import { getProjectStatusMeta } from '../../lib/projectUtils'
+import { useGuestMode } from '../../context/GuestModeContext'
 
 const TECH_ICONS = {
   react: '⚛',
@@ -51,7 +52,9 @@ function getStatusClass(status) {
 function ProjectsGalleryCardComponent({
   project,
   index,
+  readOnly = false,
 }) {
+  const { resolvePath } = useGuestMode()
   const statusMeta = getProjectStatusMeta(project.showcase.status)
   const techStack = project.showcase.techStack || []
   const keyFeatures = project.showcase.keyFeatures || []
@@ -138,9 +141,11 @@ function ProjectsGalleryCardComponent({
             >
               Live Demo
             </a>
-            <Link to={`/projects/${project.id}/edit`} className="projects-gallery-action projects-gallery-action--primary">
-              Edit
-            </Link>
+            {!readOnly ? (
+              <Link to={`/projects/${project.id}/edit`} className="projects-gallery-action projects-gallery-action--primary">Edit</Link>
+            ) : (
+              <Link to={resolvePath('/projects')} className="projects-gallery-action projects-gallery-action--primary">Guest View</Link>
+            )}
           </div>
         </div>
       </div>

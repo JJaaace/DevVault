@@ -30,6 +30,8 @@ function VaultParticleFieldComponent() {
 
     let frameId = null
     let particles = []
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    let pageVisible = !document.hidden
     const cursor = { x: window.innerWidth / 2, y: window.innerHeight / 2, active: false }
 
     const resize = () => {
@@ -57,6 +59,7 @@ function VaultParticleFieldComponent() {
     }
 
     const draw = (timestamp) => {
+      frameId = null
       const width = window.innerWidth
       const height = window.innerHeight
 
@@ -113,20 +116,32 @@ function VaultParticleFieldComponent() {
         context.fill()
       })
 
-      frameId = window.requestAnimationFrame(draw)
+      if (!reducedMotion && pageVisible) frameId = window.requestAnimationFrame(draw)
+    }
+
+    const handleVisibility = () => {
+      pageVisible = !document.hidden
+      if (pageVisible && !reducedMotion && !frameId) frameId = window.requestAnimationFrame(draw)
+      if (!pageVisible && frameId) {
+        window.cancelAnimationFrame(frameId)
+        frameId = null
+      }
     }
 
     resize()
-    frameId = window.requestAnimationFrame(draw)
+    if (reducedMotion) draw(0)
+    else frameId = window.requestAnimationFrame(draw)
 
     window.addEventListener('resize', resize)
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseleave', handleLeave)
+    document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
       window.removeEventListener('resize', resize)
       window.removeEventListener('mousemove', handleMove)
       window.removeEventListener('mouseleave', handleLeave)
+      document.removeEventListener('visibilitychange', handleVisibility)
 
       if (frameId) {
         window.cancelAnimationFrame(frameId)

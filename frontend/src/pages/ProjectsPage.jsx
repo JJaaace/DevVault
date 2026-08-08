@@ -2,7 +2,6 @@ import { useAuth } from '@clerk/clerk-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { DashboardCard } from '../components/DashboardCard'
 import { GitHubSyncStatusCard } from '../components/GitHubSyncStatusCard'
 import { ProjectsGalleryCard } from '../components/projects/ProjectsGalleryCard'
 import { ProjectsEmptyState } from '../components/ProjectsEmptyState'
@@ -10,20 +9,35 @@ import { fetchProjects } from '../lib/projectsApi'
 import { authenticatedRequest } from '../lib/api'
 import { fetchGitHubSyncStatus, startGitHubSync } from '../lib/githubSyncApi'
 import { decorateProjectShowcase } from '../lib/projectShowcaseCatalog'
+import { useGuestMode } from '../context/GuestModeContext'
 
-export function ProjectsPage() {
-  const { getToken, isLoaded, isSignedIn } = useAuth()
-  const [projects, setProjects] = useState([])
-  const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(true)
+const LAST_PROJECT_SYNC_CACHE_KEY = 'devvault:last-github-project-sync'
+
+function readLastProjectSync() {
+  if (typeof window === 'undefined') return null
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(LAST_PROJECT_SYNC_CACHE_KEY) || 'null')
+    return cached?.status === 'completed' ? cached : null
+  } catch {
+    return null
+  }
+}
+
+function ProjectsPageContent({ auth }) {
+  const { getToken, isLoaded, isSignedIn } = auth
+  const { isGuestMode, portfolio } = useGuestMode()
+  const [projects, setProjects] = useState(() => isGuestMode ? portfolio.projects || [] : [])
+  const [profile, setProfile] = useState(() => isGuestMode ? portfolio.profile : null)
+  const [loading, setLoading] = useState(!isGuestMode)
   const [error, setError] = useState('')
-  const [syncState, setSyncState] = useState(null)
+  const [syncState, setSyncState] = useState(() => isGuestMode ? null : readLastProjectSync())
   const [galleryVisible, setGalleryVisible] = useState(false)
   const galleryRef = useRef(null)
   const syncJobId = syncState?.syncId
   const syncJobStatus = syncState?.status
 
   useEffect(() => {
+    if (isGuestMode) return undefined
     if (!syncJobId || (syncJobStatus !== 'queued' && syncJobStatus !== 'running')) {
       return undefined
     }
@@ -41,23 +55,24 @@ export function ProjectsPage() {
         setSyncState(nextState)
 
         if (nextState.status === 'completed') {
-          if (nextState.result?.profile) {
-            setProfile(nextState.result.profile)
+          try {
+            window.localStorage.setItem(LAST_PROJECT_SYNC_CACHE_KEY, JSON.stringify(nextState))
+          } catch {
+            // The completed result still remains visible for this session.
           }
-
           const refreshedProjects = await fetchProjects(getToken)
           setProjects(Array.isArray(refreshedProjects) ? refreshedProjects : [])
 
           if (nextState.errors?.length) {
-            toast.warning(nextState.message || 'GitHub sync completed with warnings.')
+            toast.warning(nextState.message || 'GitHub project sync completed with warnings.')
           } else {
-            toast.success(nextState.message || 'GitHub sync completed.')
+            toast.success(nextState.message || 'GitHub project sync completed.')
           }
           return
         }
 
         if (nextState.status === 'failed') {
-          toast.error(nextState.message || 'Unable to sync GitHub repos.')
+          toast.error(nextState.message || 'Unable to sync GitHub projects.')
           return
         }
 
@@ -89,9 +104,10 @@ export function ProjectsPage() {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [getToken, syncJobId, syncJobStatus])
+  }, [getToken, isGuestMode, syncJobId, syncJobStatus])
 
   useEffect(() => {
+    if (isGuestMode) return
     async function loadProjects() {
       const [projectData, profileData] = await Promise.allSettled([
         fetchProjects(getToken),
@@ -120,7 +136,7 @@ export function ProjectsPage() {
       setError(err.message || 'Unable to load projects.')
       setLoading(false)
     })
-  }, [getToken])
+  }, [getToken, isGuestMode])
 
   const hasGitHubUrl = Boolean(profile?.githubUrl)
   const orderedProjects = useMemo(() => [...projects].sort((left, right) => {
@@ -173,16 +189,16 @@ export function ProjectsPage() {
       return
     }
 
-    const loadingToast = toast.loading('Starting GitHub synchronization...')
+    const loadingToast = toast.loading('Starting project-only GitHub sync...')
 
     try {
       const job = await startGitHubSync(getToken)
       setSyncState(job)
-      toast.success('GitHub synchronization started.', { id: loadingToast })
+      toast.success('GitHub project sync started.', { id: loadingToast })
     } catch (err) {
       const message = err.status === 401 || err.status === 403
-        ? 'Sign in again to sync GitHub repos.'
-        : err.message || 'Unable to sync GitHub repos.'
+        ? 'Sign in again to sync GitHub projects.'
+        : err.message || 'Unable to sync GitHub projects.'
       toast.error(message, { id: loadingToast })
       setSyncState({
         syncId: null,
@@ -197,7 +213,7 @@ export function ProjectsPage() {
 
   return (
     <div className="page-shell page-shell--wide page-stack pb-14">
-      <section className="surface-card surface-card--hero px-6 py-8 md:px-10 md:py-10 fade-in-up">
+      <section id="github-sync" className="surface-card surface-card--hero scroll-mt-28 px-6 py-8 md:px-10 md:py-10 fade-in-up">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <p className="section-eyebrow">Projects</p>
@@ -206,7 +222,7 @@ export function ProjectsPage() {
               Keep your work ready for recruiters with clean status tracking, design-forward cards, and a single source of truth for every launch.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          {!isGuestMode ? <div className="flex flex-wrap gap-3">
             <Link to="/projects/new" className="button-primary px-5 py-3 text-sm md:text-base">
               New Project
             </Link>
@@ -216,16 +232,16 @@ export function ProjectsPage() {
               disabled={syncState?.status === 'queued' || syncState?.status === 'running' || !hasGitHubUrl || !isLoaded || !isSignedIn}
               className="button-secondary px-5 py-3 text-sm md:text-base disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {syncState?.status === 'queued' || syncState?.status === 'running' ? 'Syncing GitHub...' : 'Sync GitHub repos'}
+              {syncState?.status === 'queued' || syncState?.status === 'running' ? 'Syncing projects...' : 'Sync GitHub Projects'}
             </button>
-          </div>
+          </div> : <span className="guest-read-only-badge">Guest view · Read only</span>}
         </div>
 
-        {profile?.githubLastSyncedAt ? <p className="mt-4 text-sm text-[var(--color-text-soft)]">Last GitHub sync: {new Date(profile.githubLastSyncedAt).toLocaleString()}</p> : null}
+        {!isGuestMode ? <p className="mt-4 max-w-3xl text-sm leading-6 text-[var(--color-text-soft)]">Project-only safety: refreshes linked repository metadata. It never changes your profile, skills, certifications, goals, resume, project descriptions, artwork, status, ordering, technology stack, or demo links. New repositories stay available for review and are not auto-added.</p> : null}
 
       </section>
 
-      <GitHubSyncStatusCard syncState={syncState} />
+      {!isGuestMode ? <GitHubSyncStatusCard syncState={syncState} /> : null}
 
       {error ? (
         <div className="widget-card border border-[rgba(185,56,28,0.18)] bg-[rgba(255,242,236,0.9)] p-4 text-sm text-[#a83f1d]">
@@ -249,6 +265,7 @@ export function ProjectsPage() {
               <ProjectsGalleryCard
                 project={project}
                 index={index}
+                readOnly={isGuestMode}
               />
             </div>
           ))}
@@ -257,14 +274,17 @@ export function ProjectsPage() {
         <ProjectsEmptyState />
       )}
 
-      <DashboardCard title="What to add next" description="Use these sections to make the Projects workspace feel complete.">
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <span className="chip chip--accent">Roadmap milestones</span>
-          <span className="chip">Feature flags</span>
-          <span className="chip">Demo walkthroughs</span>
-          <span className="chip">Launch notes</span>
-        </div>
-      </DashboardCard>
     </div>
   )
+}
+
+function AuthenticatedProjectsPage() {
+  return <ProjectsPageContent auth={useAuth()} />
+}
+
+export function ProjectsPage() {
+  const { isGuestMode } = useGuestMode()
+  return isGuestMode
+    ? <ProjectsPageContent auth={{ getToken: async () => '', isLoaded: true, isSignedIn: false }} />
+    : <AuthenticatedProjectsPage />
 }

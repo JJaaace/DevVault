@@ -1,21 +1,8 @@
 const crypto = require('crypto')
-const { createProject, listProjects, updateProject } = require('./projectService')
-const { getLocalStore, updateLocalStore } = require('./localStore')
-
-let prisma = null
-let prismaProfileFieldNames = null
-
-try {
-  const { PrismaClient, Prisma } = require('@prisma/client')
-  const { PrismaPg } = require('@prisma/adapter-pg')
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
-  prisma = new PrismaClient({ adapter })
-  const profileModel = Prisma?.dmmf?.datamodel?.models?.find((model) => model.name === 'Profile')
-  prismaProfileFieldNames = profileModel ? new Set(profileModel.fields.map((field) => field.name)) : null
-} catch (error) {
-  prisma = null
-  prismaProfileFieldNames = null
-}
+const { prisma } = require('../db/prisma')
+const { isPostgresMode } = require('../config/persistence')
+const { listProjects, updateGitHubProjectMetadata } = require('./projectService')
+const { getLocalStore } = require('./localStore')
 
 const syncJobs = new Map()
 const MAX_FINISHED_SYNC_JOBS = 200
@@ -23,49 +10,26 @@ const MAX_FINISHED_SYNC_JOBS = 200
 function createSyncError(statusCode, message, details) {
   const error = new Error(message)
   error.statusCode = statusCode
-  if (details) {
-    error.details = details
-  }
+  if (details) error.details = details
   return error
 }
 
 function normalizeGitHubUsername(value) {
-  if (!value || typeof value !== 'string') {
-    return ''
-  }
-
+  if (!value || typeof value !== 'string') return ''
   const trimmed = value.trim()
-  if (!trimmed) {
-    return ''
-  }
+  if (!trimmed) return ''
 
   const sshMatch = trimmed.match(/github\.com:([^/]+)\//i)
-  if (sshMatch?.[1]) {
-    return sshMatch[1].replace(/\.$/, '')
-  }
+  if (sshMatch?.[1]) return sshMatch[1].replace(/\.$/, '')
 
   try {
     const parsedUrl = new URL(trimmed)
     if (parsedUrl.hostname.toLowerCase().includes('github.com')) {
       const segments = parsedUrl.pathname.split('/').filter(Boolean)
-      if (segments[0] === 'users' || segments[0] === 'orgs') {
-        return (segments[1] || '').replace(/\.$/, '')
-      }
-
-      return (segments[0] || '').replace(/\.$/, '')
+      return ((segments[0] === 'users' || segments[0] === 'orgs') ? segments[1] : segments[0] || '').replace(/\.$/, '')
     }
   } catch {
-    // fall through to path parsing
-  }
-
-  const pathMatch = trimmed.match(/github\.com\/(.+)$/i)
-  if (pathMatch?.[1]) {
-    const segments = pathMatch[1].split('/').filter(Boolean)
-    if (segments[0] === 'users' || segments[0] === 'orgs') {
-      return (segments[1] || '').replace(/\.$/, '')
-    }
-
-    return (segments[0] || '').replace(/\.$/, '')
+    // Accept a plain GitHub username below.
   }
 
   return trimmed.replace(/^@/, '').replace(/\/$/, '').replace(/\.$/, '')
@@ -76,389 +40,160 @@ function getGitHubToken() {
 }
 
 function getGitHubHeaders(token) {
-  const headers = {
+  return {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-
-  return headers
 }
 
 async function fetchGitHubJson(url, { token, step } = {}) {
-  const response = await fetch(url, {
-    headers: getGitHubHeaders(token),
-  })
-
+  const response = await fetch(url, { headers: getGitHubHeaders(token) })
   const contentType = response.headers.get('content-type') || ''
   const rawBody = await response.text()
 
   if (!response.ok) {
-    let details = []
     let message = rawBody || `GitHub request failed with status ${response.status}`
-
+    let details = []
     if (contentType.includes('application/json') && rawBody) {
       try {
         const parsed = JSON.parse(rawBody)
         message = parsed.message || message
-        if (Array.isArray(parsed.errors)) {
-          details = parsed.errors.map((entry) => {
-            if (typeof entry === 'string') {
-              return entry
-            }
-
-            if (entry && typeof entry === 'object') {
-              return [entry.resource, entry.field, entry.code, entry.message].filter(Boolean).join(': ')
-            }
-
-            return String(entry)
-          }).filter(Boolean)
-        }
+        details = Array.isArray(parsed.errors) ? parsed.errors.map((entry) => (
+          typeof entry === 'string' ? entry : [entry.resource, entry.field, entry.code, entry.message].filter(Boolean).join(': ')
+        )).filter(Boolean) : []
       } catch {
-        // keep the raw response body
+        // Keep GitHub's raw error message.
       }
     }
-
-    const error = createSyncError(response.status, `GitHub request failed${step ? ` while ${step}` : ''}: ${message}`, details)
-    error.githubStatus = response.status
-    throw error
+    throw createSyncError(response.status, `GitHub request failed${step ? ` while ${step}` : ''}: ${message}`, details)
   }
 
-  if (!rawBody) {
-    return null
-  }
-
-  if (contentType.includes('application/json')) {
-    return JSON.parse(rawBody)
-  }
-
-  return rawBody
-}
-
-async function fetchGitHubProfile(username, token) {
-  const normalized = normalizeGitHubUsername(username)
-  if (!normalized) {
-    throw createSyncError(400, 'GitHub username is required before synchronization can start.')
-  }
-
-  return fetchGitHubJson(`https://api.github.com/users/${encodeURIComponent(normalized)}`, {
-    token,
-    step: 'loading the GitHub profile',
-  })
-}
-
-async function fetchAuthenticatedGitHubProfile(token) {
-  return fetchGitHubJson('https://api.github.com/user', {
-    token,
-    step: 'loading the authenticated GitHub profile',
-  })
-}
-
-function buildProfilePayloadFromGitHub(profile, githubUser, githubLastSyncedAt) {
-  const nameParts = typeof githubUser?.name === 'string' ? githubUser.name.trim().split(/\s+/) : []
-  const githubUrl = githubUser?.html_url || profile?.githubUrl || ''
-
-  return {
-    firstName: profile?.firstName || nameParts[0] || githubUser?.login || profile?.username || '',
-    lastName: profile?.lastName || nameParts.slice(1).join(' ') || '',
-    bio: githubUser?.bio || profile?.bio || '',
-    profileImageUrl: githubUser?.avatar_url || profile?.profileImageUrl || profile?.profileImage || '',
-    location: githubUser?.location || profile?.location || '',
-    websiteUrl: githubUser?.blog || profile?.websiteUrl || '',
-    githubUrl,
-    githubLastSyncedAt,
-  }
-}
-
-function hasPrismaProfileAccess() {
-  return Boolean(
-    prisma
-    && prisma.profile
-    && typeof prisma.profile.update === 'function'
-    && typeof prisma.profile.findUnique === 'function',
-  )
-}
-
-function mapProfilePayloadToActiveSchema(profilePayload) {
-  if (!prismaProfileFieldNames) {
-    return profilePayload
-  }
-
-  const mapped = { ...profilePayload }
-
-  if (mapped.profileImageUrl && prismaProfileFieldNames.has('profileImage') && !prismaProfileFieldNames.has('profileImageUrl')) {
-    mapped.profileImage = mapped.profileImageUrl
-  }
-
-  if (mapped.location && prismaProfileFieldNames.has('country') && !prismaProfileFieldNames.has('location')) {
-    mapped.country = mapped.location
-  }
-
-  if (mapped.country && prismaProfileFieldNames.has('location') && !prismaProfileFieldNames.has('country')) {
-    mapped.location = mapped.country
-  }
-
-  const filtered = {}
-  for (const [key, value] of Object.entries(mapped)) {
-    if (prismaProfileFieldNames.has(key) && value !== undefined) {
-      filtered[key] = value
-    }
-  }
-
-  return filtered
+  if (!rawBody) return null
+  return contentType.includes('application/json') ? JSON.parse(rawBody) : rawBody
 }
 
 async function fetchGitHubRepos(username, token) {
   const normalized = normalizeGitHubUsername(username)
-  if (!normalized) {
-    throw createSyncError(400, 'GitHub username is required before synchronization can start.')
-  }
+  if (!normalized) throw createSyncError(400, 'Add a GitHub profile URL before syncing projects.')
 
-  const repos = []
-  const perPage = 100
-
+  const repositories = []
   for (let page = 1; page <= 10; page += 1) {
     const batch = await fetchGitHubJson(
-      `https://api.github.com/users/${encodeURIComponent(normalized)}/repos?per_page=${perPage}&page=${page}&sort=updated&type=owner`,
-      {
-        token,
-        step: 'loading repositories from GitHub',
-      },
+      `https://api.github.com/users/${encodeURIComponent(normalized)}/repos?per_page=100&page=${page}&sort=updated&type=owner`,
+      { token, step: 'loading repositories' },
     )
-
-    if (!Array.isArray(batch) || !batch.length) {
-      break
-    }
-
-    repos.push(...batch)
-
-    if (batch.length < perPage) {
-      break
-    }
+    if (!Array.isArray(batch) || !batch.length) break
+    repositories.push(...batch)
+    if (batch.length < 100) break
   }
-
-  return repos
+  return repositories
 }
 
 async function fetchRepositoryLanguages(repo, token) {
-  if (!repo?.languages_url) {
-    return []
-  }
-
+  if (!repo?.languages_url) return [repo?.language].filter(Boolean)
   const languages = await fetchGitHubJson(repo.languages_url, {
     token,
     step: `loading languages for ${repo.full_name}`,
   })
-
   return languages && typeof languages === 'object' ? Object.keys(languages) : []
 }
 
-function pickRepoDescription(repo, existingProject) {
-  const cleanedDescription = typeof repo?.description === 'string' ? repo.description.trim() : ''
-  if (cleanedDescription.length >= 20) {
-    return cleanedDescription
-  }
-
-  if (cleanedDescription.length > 0) {
-    return cleanedDescription
-  }
-
-  return existingProject?.description || 'Open-source project imported from GitHub.'
+function cleanString(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
-function buildProjectPayloadFromRepo(repo, languages, existingProject = {}) {
-  const techStack = languages.length ? languages : [repo.language].filter(Boolean)
-  const homepage = typeof repo.homepage === 'string' ? repo.homepage.trim() : ''
-  const shouldRestoreActiveStatus = existingProject.status === 'ARCHIVED' && existingProject.githubArchivedAt
-
-  return {
-    title: repo.name,
-    description: pickRepoDescription(repo, existingProject),
-    githubRepoId: repo.id,
-    githubFullName: repo.full_name,
-    githubDescription: repo.description || '',
-    githubStars: repo.stargazers_count || 0,
-    githubForks: repo.forks_count || 0,
-    githubLanguages: techStack,
-    githubTopics: Array.isArray(repo.topics) ? repo.topics : [],
-    githubUrl: repo.html_url,
-    githubHomepage: homepage,
-    githubUpdatedAt: repo.updated_at,
-    githubPushedAt: repo.pushed_at,
-    githubArchivedAt: repo.archived ? new Date().toISOString() : null,
-    liveDemoUrl: homepage || existingProject.liveDemoUrl || '',
-    bannerImageUrl: repo.owner?.avatar_url || existingProject.bannerImageUrl || '',
-    techStack,
-    status: repo.archived ? 'ARCHIVED' : (shouldRestoreActiveStatus ? 'PLANNING' : (existingProject.status || 'PLANNING')),
-    dateStarted: existingProject.dateStarted || repo.created_at || null,
-    targetCompletion: existingProject.targetCompletion || null,
-    challenges: existingProject.challenges || '',
-    lessonsLearned: existingProject.lessonsLearned || '',
-  }
+function buildGitHubProjectMetadata(repo, languages) {
+  const metadata = {}
+  if (Number.isInteger(repo?.id)) metadata.githubRepoId = repo.id
+  if (cleanString(repo?.full_name)) metadata.githubFullName = cleanString(repo.full_name)
+  if (cleanString(repo?.description)) metadata.githubDescription = cleanString(repo.description)
+  if (repo?.stargazers_count !== undefined && Number.isFinite(Number(repo.stargazers_count))) metadata.githubStars = Number(repo.stargazers_count)
+  if (repo?.forks_count !== undefined && Number.isFinite(Number(repo.forks_count))) metadata.githubForks = Number(repo.forks_count)
+  if (languages !== undefined) metadata.githubLanguages = [...new Set((languages || []).filter(Boolean))]
+  if (Array.isArray(repo?.topics)) metadata.githubTopics = [...new Set(repo.topics.filter(Boolean))]
+  if (cleanString(repo?.html_url)) metadata.githubUrl = cleanString(repo.html_url)
+  if (cleanString(repo?.homepage)) metadata.githubHomepage = cleanString(repo.homepage)
+  if (cleanString(repo?.updated_at)) metadata.githubUpdatedAt = cleanString(repo.updated_at)
+  if (cleanString(repo?.pushed_at)) metadata.githubPushedAt = cleanString(repo.pushed_at)
+  if (repo?.archived === true) metadata.githubArchivedAt = cleanString(repo.updated_at) || new Date().toISOString()
+  if (repo?.archived === false) metadata.githubArchivedAt = null
+  return metadata
 }
 
-function normalizeComparableList(value) {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right))
+function normalizeComparable(value) {
+  if (Array.isArray(value)) return [...value].map(String).sort().join('\u0000')
+  if (value instanceof Date) return value.toISOString()
+  if (value && /At$/.test(String(value))) return new Date(value).toISOString()
+  return value ?? null
 }
 
-function datesEqual(left, right) {
-  const leftTime = left ? new Date(left).getTime() : null
-  const rightTime = right ? new Date(right).getTime() : null
-
-  if (leftTime === null && rightTime === null) {
-    return true
-  }
-
-  return leftTime === rightTime
-}
-
-function hasRepositoryChanged(existingProject, repo) {
-  if (!existingProject) {
-    return true
-  }
-
-  const nextHomepage = typeof repo.homepage === 'string' ? repo.homepage.trim() : ''
-  const nextDescription = pickRepoDescription(repo, existingProject)
-  const nextTopics = normalizeComparableList(Array.isArray(repo.topics) ? repo.topics : [])
-  const currentTopics = normalizeComparableList(existingProject.githubTopics || [])
-
-  return (
-    existingProject.githubRepoId !== repo.id
-    || existingProject.githubFullName !== repo.full_name
-    || existingProject.title !== repo.name
-    || (existingProject.description || '') !== nextDescription
-    || (existingProject.githubDescription || '') !== (repo.description || '')
-    || Number(existingProject.githubStars || 0) !== Number(repo.stargazers_count || 0)
-    || Number(existingProject.githubForks || 0) !== Number(repo.forks_count || 0)
-    || existingProject.githubHomepage !== nextHomepage
-    || existingProject.githubUrl !== repo.html_url
-    || !datesEqual(existingProject.githubUpdatedAt, repo.updated_at)
-    || !datesEqual(existingProject.githubPushedAt, repo.pushed_at)
-    || Boolean(existingProject.githubArchivedAt) !== Boolean(repo.archived)
-    || currentTopics.length !== nextTopics.length
-    || currentTopics.some((topic, index) => topic !== nextTopics[index])
-  )
-}
-
-function buildArchivedProjectPayload(existingProject) {
-  return {
-    title: existingProject.title,
-    description: existingProject.description || 'Archived because the GitHub repository is no longer available.',
-    githubRepoId: existingProject.githubRepoId,
-    githubFullName: existingProject.githubFullName,
-    githubDescription: existingProject.githubDescription || '',
-    githubStars: existingProject.githubStars || 0,
-    githubForks: existingProject.githubForks || 0,
-    githubLanguages: existingProject.githubLanguages || existingProject.techStack || [],
-    githubTopics: existingProject.githubTopics || [],
-    githubUrl: existingProject.githubUrl || '',
-    githubHomepage: existingProject.githubHomepage || existingProject.liveDemoUrl || '',
-    githubUpdatedAt: existingProject.githubUpdatedAt || existingProject.updatedAt || null,
-    githubPushedAt: existingProject.githubPushedAt || existingProject.updatedAt || null,
-    githubArchivedAt: new Date().toISOString(),
-    liveDemoUrl: existingProject.liveDemoUrl || '',
-    bannerImageUrl: existingProject.bannerImageUrl || '',
-    techStack: existingProject.githubLanguages || existingProject.techStack || [],
-    status: 'ARCHIVED',
-    dateStarted: existingProject.dateStarted || null,
-    targetCompletion: existingProject.targetCompletion || null,
-    challenges: existingProject.challenges || '',
-    lessonsLearned: existingProject.lessonsLearned || '',
-  }
-}
-
-async function loadProfile(clerkUserId) {
-  if (prisma) {
-    try {
-      const profile = await prisma.profile.findUnique({
-        where: { clerkUserId },
-      })
-
-      if (profile) {
-        return profile
-      }
-    } catch (error) {
-      // fall through to local storage
+function hasGitHubMetadataChanged(project, metadata) {
+  return Object.entries(metadata).some(([field, value]) => {
+    if (field.endsWith('At')) {
+      const currentTime = project[field] ? new Date(project[field]).getTime() : null
+      const nextTime = value ? new Date(value).getTime() : null
+      return currentTime !== nextTime
     }
-  }
-
-  return getLocalStore().profiles.find((profile) => profile.clerkUserId === clerkUserId) || null
-}
-
-function getActiveGitHubSyncJob(clerkUserId) {
-  const latestActiveJob = [...syncJobs.values()]
-    .filter((job) => job.clerkUserId === clerkUserId && (job.status === 'queued' || job.status === 'running'))
-    .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))[0]
-
-  return latestActiveJob ? createJobSnapshot(latestActiveJob) : null
-}
-
-async function saveProfileSyncMetadata(clerkUserId, githubLastSyncedAt) {
-  if (hasPrismaProfileAccess()) {
-    try {
-      if (prismaProfileFieldNames?.has('githubLastSyncedAt')) {
-        await prisma.profile.update({
-          where: { clerkUserId },
-          data: { githubLastSyncedAt },
-        })
-      }
-      return
-    } catch (error) {
-      // fall through to local storage
-    }
-  }
-
-  updateLocalStore((store) => ({
-    ...store,
-    profiles: store.profiles.map((profile) => (
-      profile.clerkUserId === clerkUserId
-        ? { ...profile, githubLastSyncedAt }
-        : profile
-    )),
-  }))
-}
-
-async function saveSyncedProfile(clerkUserId, profilePayload) {
-  if (hasPrismaProfileAccess()) {
-    try {
-      await prisma.profile.update({
-        where: { clerkUserId },
-        data: mapProfilePayloadToActiveSchema(profilePayload),
-      })
-      return prisma.profile.findUnique({ where: { clerkUserId } })
-    } catch (error) {
-      // fall through to local storage
-    }
-  }
-
-  let nextProfile = null
-  updateLocalStore((store) => {
-    const existingProfile = store.profiles.find((profile) => profile.clerkUserId === clerkUserId)
-    if (!existingProfile) {
-      throw createSyncError(404, 'Profile not found for synchronization.')
-    }
-
-    nextProfile = {
-      ...existingProfile,
-      ...profilePayload,
-    }
-
-    return {
-      ...store,
-      profiles: store.profiles.map((profile) => (
-        profile.clerkUserId === clerkUserId ? nextProfile : profile
-      )),
-    }
+    return normalizeComparable(project[field]) !== normalizeComparable(value)
   })
+}
 
-  return nextProfile
+function findLinkedProject(projects, repo) {
+  const repoId = Number(repo?.id)
+  const fullName = cleanString(repo?.full_name)?.toLowerCase()
+  const url = cleanString(repo?.html_url)?.replace(/\/$/, '').toLowerCase()
+  return projects.find((project) => Number(project.githubRepoId) === repoId)
+    || projects.find((project) => fullName && cleanString(project.githubFullName)?.toLowerCase() === fullName)
+    || projects.find((project) => url && cleanString(project.githubUrl)?.replace(/\/$/, '').toLowerCase() === url)
+    || null
+}
+
+function createImportCandidate(repo) {
+  return {
+    githubRepoId: Number.isInteger(repo?.id) ? repo.id : null,
+    name: cleanString(repo?.name),
+    githubFullName: cleanString(repo?.full_name),
+    githubDescription: cleanString(repo?.description),
+    githubUrl: cleanString(repo?.html_url),
+    githubHomepage: cleanString(repo?.homepage),
+    githubStars: Number(repo?.stargazers_count || 0),
+    githubForks: Number(repo?.forks_count || 0),
+    githubTopics: Array.isArray(repo?.topics) ? repo.topics : [],
+    primaryLanguage: cleanString(repo?.language),
+    archived: Boolean(repo?.archived),
+  }
+}
+
+function planProjectSync(projects, repositories) {
+  const linkedProjectIds = new Set()
+  const linkedRepositories = []
+  const importCandidates = []
+
+  for (const repo of repositories) {
+    const project = findLinkedProject(projects, repo)
+    if (!project) {
+      importCandidates.push(createImportCandidate(repo))
+      continue
+    }
+    linkedProjectIds.add(project.id)
+    linkedRepositories.push({ project, repo })
+  }
+
+  const unavailable = projects
+    .filter((project) => project.githubRepoId || project.githubFullName || project.githubUrl)
+    .filter((project) => !linkedProjectIds.has(project.id))
+    .map((project) => ({ projectId: project.id, title: project.title, githubFullName: project.githubFullName }))
+
+  return { linkedRepositories, importCandidates, unavailable }
+}
+
+async function loadGitHubAccount(clerkUserId) {
+  if (isPostgresMode()) {
+    return prisma.profile.findUnique({ where: { clerkUserId }, select: { githubUrl: true } })
+  }
+  const profile = getLocalStore().profiles.find((item) => item.clerkUserId === clerkUserId)
+  return profile ? { githubUrl: profile.githubUrl } : null
 }
 
 function createJobSnapshot(job) {
@@ -479,207 +214,108 @@ function createJobSnapshot(job) {
   }
 }
 
+function pruneFinishedSyncJobs() {
+  const finished = [...syncJobs.values()]
+    .filter((job) => ['completed', 'failed'].includes(job.status))
+    .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))
+  for (const job of finished.slice(MAX_FINISHED_SYNC_JOBS)) syncJobs.delete(job.syncId)
+}
+
 function updateJob(syncId, patch) {
   const current = syncJobs.get(syncId)
-  if (!current) {
-    return null
-  }
-
-  const next = {
-    ...current,
-    ...patch,
-    updatedAt: new Date().toISOString(),
-  }
-
+  if (!current) return null
+  const next = { ...current, ...patch, updatedAt: new Date().toISOString() }
   syncJobs.set(syncId, next)
-
-  if (next.status === 'completed' || next.status === 'failed') {
-    pruneFinishedSyncJobs()
-  }
-
+  if (['completed', 'failed'].includes(next.status)) pruneFinishedSyncJobs()
   return next
 }
 
-function pruneFinishedSyncJobs() {
-  const finishedJobs = [...syncJobs.values()]
-    .filter((job) => job.status === 'completed' || job.status === 'failed')
-    .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))
-
-  if (finishedJobs.length <= MAX_FINISHED_SYNC_JOBS) {
-    return
-  }
-
-  const keepIds = new Set(finishedJobs.slice(0, MAX_FINISHED_SYNC_JOBS).map((job) => job.syncId))
-  for (const job of finishedJobs) {
-    if (!keepIds.has(job.syncId)) {
-      syncJobs.delete(job.syncId)
-    }
-  }
+function getActiveGitHubSyncJob(clerkUserId) {
+  const job = [...syncJobs.values()]
+    .filter((item) => item.clerkUserId === clerkUserId && ['queued', 'running'].includes(item.status))
+    .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))[0]
+  return job ? createJobSnapshot(job) : null
 }
 
 async function runGitHubSync(syncId) {
   const job = syncJobs.get(syncId)
-  if (!job) {
-    return
-  }
+  if (!job) return
 
   try {
-    updateJob(syncId, {
-      status: 'running',
-      progress: 5,
-      step: 'Resolving GitHub profile',
-      message: 'Loading the linked GitHub account.',
-    })
+    updateJob(syncId, { status: 'running', progress: 8, step: 'Resolving GitHub account', message: 'Reading the GitHub URL from your profile. Profile data will not be changed.' })
+    const account = await loadGitHubAccount(job.clerkUserId)
+    if (!account) throw createSyncError(404, 'Profile not found for project synchronization.')
+    const username = normalizeGitHubUsername(account.githubUrl)
+    if (!username) throw createSyncError(400, 'Add a GitHub profile URL before syncing projects.')
 
-    const profile = await loadProfile(job.clerkUserId)
-    if (!profile) {
-      throw createSyncError(404, 'Profile not found for synchronization.')
-    }
-
-    const githubToken = getGitHubToken()
-    const githubUsername = normalizeGitHubUsername(profile.githubUrl)
-
-    if (!githubUsername && !githubToken) {
-      throw createSyncError(400, 'Add a GitHub profile URL before syncing or configure a GitHub token on the server.')
-    }
-
-    const githubUser = githubUsername
-      ? await fetchGitHubProfile(githubUsername, githubToken)
-      : await fetchAuthenticatedGitHubProfile(githubToken)
-
-    const syncSource = githubUsername || githubUser?.login
-    if (!syncSource) {
-      throw createSyncError(400, 'Unable to resolve a GitHub username for synchronization.')
-    }
-
-    const syncedAt = new Date().toISOString()
-    const syncedProfilePayload = buildProfilePayloadFromGitHub(profile, githubUser, syncedAt)
-
-    updateJob(syncId, {
-      progress: 20,
-      step: 'Loading repositories',
-      message: `Fetching repositories for ${syncSource}.`,
-    })
-
-    const repositories = await fetchGitHubRepos(syncSource, githubToken)
-
-    updateJob(syncId, {
-      progress: 40,
-      step: 'Preparing repository metadata',
-      message: `Preparing ${repositories.length} repository${repositories.length === 1 ? '' : 'ies'} for import.`,
-    })
-
-    const currentProjects = await listProjects(job.clerkUserId)
-    const repoProjects = currentProjects.filter((project) => project.githubRepoId || project.githubFullName || project.githubUrl)
-    const projectByRepoId = new Map(repoProjects.filter((project) => project.githubRepoId).map((project) => [project.githubRepoId, project]))
-    const projectByFullName = new Map(repoProjects.filter((project) => project.githubFullName).map((project) => [project.githubFullName.toLowerCase(), project]))
-    const projectByUrl = new Map(repoProjects.filter((project) => project.githubUrl).map((project) => [project.githubUrl, project]))
-
-    const seenProjectIds = new Set()
-    const repoSummaries = []
+    updateJob(syncId, { progress: 22, step: 'Loading repositories', message: `Fetching repositories for ${username}.` })
+    const token = getGitHubToken()
+    const repositories = await fetchGitHubRepos(username, token)
+    const projects = await listProjects(job.clerkUserId)
+    const plan = planProjectSync(projects, repositories)
     const errors = []
+    let refreshed = 0
+    let unchanged = 0
 
-    for (let index = 0; index < repositories.length; index += 1) {
-      const repo = repositories[index]
+    for (let index = 0; index < plan.linkedRepositories.length; index += 1) {
+      const { project, repo } = plan.linkedRepositories[index]
       try {
-        const existingProject = projectByRepoId.get(repo.id)
-          || projectByFullName.get(String(repo.full_name || '').toLowerCase())
-          || projectByUrl.get(repo.html_url)
-
-        if (existingProject && !hasRepositoryChanged(existingProject, repo)) {
-          seenProjectIds.add(existingProject.id)
-          updateJob(syncId, {
-            progress: 40 + Math.round(((index + 1) / Math.max(repositories.length, 1)) * 45),
-            step: 'Synchronizing repositories',
-            message: `Checked ${index + 1} of ${repositories.length} repositories.`,
-          })
-          continue
+        let languages
+        try {
+          languages = await fetchRepositoryLanguages(repo, token)
+        } catch (error) {
+          errors.push(`Languages were not refreshed for ${repo.full_name}: ${error.message}`)
         }
 
-        const languages = await fetchRepositoryLanguages(repo, githubToken)
-
-        const projectPayload = buildProjectPayloadFromRepo(repo, languages, existingProject || {})
-
-        if (existingProject) {
-          seenProjectIds.add(existingProject.id)
-          await updateProject(job.clerkUserId, existingProject.id, projectPayload)
-          repoSummaries.push({ action: 'updated', repo: repo.full_name })
+        const metadata = buildGitHubProjectMetadata(repo, languages)
+        if (hasGitHubMetadataChanged(project, metadata)) {
+          await updateGitHubProjectMetadata(job.clerkUserId, project.id, metadata)
+          refreshed += 1
         } else {
-          const createdProject = await createProject(job.clerkUserId, projectPayload)
-          seenProjectIds.add(createdProject.id)
-          repoSummaries.push({ action: 'created', repo: repo.full_name })
+          unchanged += 1
         }
-
-        const progress = 40 + Math.round(((index + 1) / Math.max(repositories.length, 1)) * 45)
-        updateJob(syncId, {
-          progress,
-          step: 'Synchronizing repositories',
-          message: `Synced ${index + 1} of ${repositories.length} repositories.`,
-        })
-      } catch (repoError) {
-        errors.push(`Failed to sync ${repo.full_name || repo.name}: ${repoError.message}`)
+      } catch (error) {
+        errors.push(`Metadata was not refreshed for ${repo.full_name}: ${error.message}`)
       }
-    }
 
-    const missingProjects = repoProjects.filter((project) => !seenProjectIds.has(project.id) && project.status !== 'ARCHIVED')
-
-    updateJob(syncId, {
-      progress: 90,
-      step: 'Archiving missing repositories',
-      message: missingProjects.length
-        ? `Archiving ${missingProjects.length} repository${missingProjects.length === 1 ? '' : 'ies'} that no longer exist on GitHub.`
-        : 'No archived repositories detected.',
-    })
-
-    for (const project of missingProjects) {
-      try {
-        await updateProject(job.clerkUserId, project.id, buildArchivedProjectPayload(project))
-        repoSummaries.push({ action: 'archived', repo: project.githubFullName || project.githubUrl || project.title })
-      } catch (archiveError) {
-        errors.push(`Failed to archive ${project.title}: ${archiveError.message}`)
-      }
-    }
-
-    const syncedProfile = await saveSyncedProfile(job.clerkUserId, syncedProfilePayload)
-
-    await saveProfileSyncMetadata(job.clerkUserId, syncedAt)
-
-    updateJob(syncId, {
-      status: errors.length ? 'completed' : 'completed',
-      progress: 100,
-      step: 'Sync complete',
-      message: errors.length
-        ? `Completed with ${errors.length} warning${errors.length === 1 ? '' : 's'}.`
-        : 'GitHub synchronization finished successfully.',
-      summary: {
-        imported: repoSummaries.filter((item) => item.action === 'created').length,
-        updated: repoSummaries.filter((item) => item.action === 'updated').length,
-        archived: repoSummaries.filter((item) => item.action === 'archived').length,
-        total: repositories.length,
-        githubUsername: syncSource,
-        githubLastSyncedAt: syncedAt,
-      },
-      result: {
-        profile: syncedProfile,
-      },
-      errors,
-      completedAt: syncedAt,
-      error: null,
-    })
-
-    if (errors.length) {
       updateJob(syncId, {
-        message: `Completed with ${errors.length} warning${errors.length === 1 ? '' : 's'}.`,
+        progress: 35 + Math.round(((index + 1) / Math.max(plan.linkedRepositories.length, 1)) * 55),
+        step: 'Refreshing linked projects',
+        message: `Checked ${index + 1} of ${plan.linkedRepositories.length} linked project${plan.linkedRepositories.length === 1 ? '' : 's'}.`,
       })
     }
+
+    const completedAt = new Date().toISOString()
+    const summary = {
+      refreshed,
+      unchanged,
+      available: plan.importCandidates.length,
+      unavailable: plan.unavailable.length,
+      totalRepositories: repositories.length,
+      githubUsername: username,
+      completedAt,
+    }
+    updateJob(syncId, {
+      status: 'completed',
+      progress: 100,
+      step: 'Project sync complete',
+      message: errors.length
+        ? `GitHub projects refreshed with ${errors.length} warning${errors.length === 1 ? '' : 's'}. Your curated data was preserved.`
+        : 'GitHub project metadata refreshed. Your profile and curated project fields were not changed.',
+      summary,
+      errors,
+      result: { importCandidates: plan.importCandidates, unavailableRepositories: plan.unavailable },
+      completedAt,
+      error: null,
+    })
   } catch (error) {
     updateJob(syncId, {
       status: 'failed',
-      progress: Math.max(job.progress || 0, 5),
-      step: error.step || 'GitHub sync failed',
-      message: error.message || 'Unable to synchronize GitHub data.',
-      error: error.message || 'Unable to synchronize GitHub data.',
-      errors: Array.isArray(error.details) && error.details.length ? error.details : job.errors,
+      progress: Math.max(syncJobs.get(syncId)?.progress || 0, 5),
+      step: 'GitHub project sync failed',
+      message: error.message || 'Unable to refresh GitHub project metadata.',
+      error: error.message || 'Unable to refresh GitHub project metadata.',
+      errors: Array.isArray(error.details) ? error.details : [],
       completedAt: new Date().toISOString(),
     })
   }
@@ -687,10 +323,9 @@ async function runGitHubSync(syncId) {
 
 function startGitHubSync(clerkUserId) {
   const activeJob = getActiveGitHubSyncJob(clerkUserId)
-  if (activeJob) {
-    return activeJob
-  }
+  if (activeJob) return activeJob
 
+  const now = new Date().toISOString()
   const syncId = crypto.randomUUID()
   const job = {
     syncId,
@@ -698,41 +333,23 @@ function startGitHubSync(clerkUserId) {
     status: 'queued',
     progress: 0,
     step: 'Queued',
-    message: 'Preparing GitHub synchronization.',
+    message: 'Preparing a project-only GitHub sync.',
     summary: null,
     errors: [],
-    startedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    startedAt: now,
+    updatedAt: now,
     completedAt: null,
     result: null,
     error: null,
   }
-
   syncJobs.set(syncId, job)
-  setImmediate(() => {
-    runGitHubSync(syncId).catch((error) => {
-      updateJob(syncId, {
-        status: 'failed',
-        progress: 100,
-        step: 'GitHub sync failed',
-        message: error.message || 'Unable to synchronize GitHub data.',
-        error: error.message || 'Unable to synchronize GitHub data.',
-        errors: Array.isArray(error.details) ? error.details : [],
-        completedAt: new Date().toISOString(),
-      })
-    })
-  })
-
+  setImmediate(() => runGitHubSync(syncId))
   return createJobSnapshot(job)
 }
 
 function getGitHubSync(syncId, clerkUserId) {
   const job = syncJobs.get(syncId)
-  if (!job || job.clerkUserId !== clerkUserId) {
-    return null
-  }
-
-  return createJobSnapshot(job)
+  return job && job.clerkUserId === clerkUserId ? createJobSnapshot(job) : null
 }
 
 function getGitHubSyncState(clerkUserId) {
@@ -744,4 +361,12 @@ module.exports = {
   getGitHubSync,
   getGitHubSyncState,
   getActiveGitHubSyncJob,
+  __test: {
+    normalizeGitHubUsername,
+    buildGitHubProjectMetadata,
+    hasGitHubMetadataChanged,
+    findLinkedProject,
+    createImportCandidate,
+    planProjectSync,
+  },
 }

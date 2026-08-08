@@ -85,6 +85,8 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
     linkedinUrl: profile?.linkedinUrl ?? '',
     websiteUrl: profile?.websiteUrl ?? '',
     twitterUrl: profile?.twitterUrl ?? '',
+    portfolioEnabled: profile?.portfolioEnabled ?? true,
+    currentFocus: profile?.currentFocus ?? '',
   }))
   const [imagePreview, setImagePreview] = useState(initialImageUrl)
   const [uploadError, setUploadError] = useState('')
@@ -146,6 +148,8 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
       linkedinUrl: formData.linkedinUrl.trim(),
       websiteUrl: formData.websiteUrl.trim(),
       twitterUrl: formData.twitterUrl.trim(),
+      portfolioEnabled: formData.portfolioEnabled,
+      currentFocus: formData.currentFocus.trim(),
       graduationYear: normalizeNumberInput(formData.graduationYear),
       yearsCoding: normalizeNumberInput(formData.yearsCoding),
     })
@@ -185,6 +189,8 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
 
       <Field label="Tagline" name="tagline" value={formData.tagline} onChange={handleChange} placeholder="CS student @ Ohio State · Software Engineer · Builder" helpText="A short headline shown at the top of your public profile." />
 
+      <Field label="Current focus" name="currentFocus" value={formData.currentFocus} onChange={handleChange} placeholder="Shipping DevVault and preparing for cloud certification" helpText="Shown as a concise, current status across your workspace and public portfolio." />
+
       <div className="grid gap-6 md:grid-cols-[1fr_1fr_1fr]">
         <Field label="Pronouns" name="pronouns" value={formData.pronouns} onChange={handleChange} placeholder="he/him" />
         <Field label="Job type" name="jobType" value={formData.jobType} onChange={handleChange} placeholder="Internship" helpText="e.g. Internship, Full-time, Co-op" />
@@ -202,6 +208,16 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
           </label>
         </div>
       </div>
+
+      <label className="flex cursor-pointer items-center gap-3 rounded-[1.25rem] border border-[rgba(214,160,89,0.22)] bg-[rgba(32,24,18,0.84)] px-4 py-3">
+        <input
+          type="checkbox"
+          checked={formData.portfolioEnabled}
+          onChange={(event) => setFormData((current) => ({ ...current, portfolioEnabled: event.target.checked }))}
+          className="h-4 w-4 accent-[var(--color-brand)]"
+        />
+        <span className="text-sm text-[var(--color-text-soft)]">Public portfolio enabled</span>
+      </label>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Field label="School" name="school" value={formData.school} onChange={handleChange} placeholder="University of Washington" />

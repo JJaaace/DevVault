@@ -1,774 +1,588 @@
 import { useAuth, useUser } from '@clerk/clerk-react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { motion, useReducedMotion } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
+import { TechnologyLogo } from '../components/TechnologyLogo'
 import { authenticatedRequest } from '../lib/api'
-import { readStoredProfile, saveStoredProfile } from '../lib/profileStorage'
-import { fetchProjects } from '../lib/projectsApi'
-import { fetchSkills } from '../lib/skillsApi'
-import { getTimeGreeting, buildRecentActivity } from '../lib/dashboardUtils'
-import { fetchWorkspaceResume, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
+import { getTimeGreeting } from '../lib/dashboardUtils'
+import { decorateProjectShowcase } from '../lib/projectShowcaseCatalog'
+import { useGuestMode } from '../context/GuestModeContext'
 
-// certifications key — CertificationsPage persists to this key
-const CERTS_KEY = 'devvault.certifications.collection.v2'
-
-// ─── Static seed copies of Goals / Certs to use when localStorage is empty ──
-const FALLBACK_GOALS = [
-  { id: 'summer-software-engineering-internship', title: 'Summer Software Engineering Internship', status: 'complete', targetCompletion: '2026-08-01', category: 'Career' },
-  { id: 'build-devvault', title: 'Build DevVault', status: 'current', targetCompletion: '2026-09-15', category: 'Projects' },
-  { id: 'deploy-portfolio', title: 'Deploy Portfolio', status: 'future', targetCompletion: '2026-10-01', category: 'Projects' },
-  { id: 'aws-cloud-practitioner-goal', title: 'AWS Cloud Practitioner', status: 'current', targetCompletion: '2026-11-01', category: 'Certifications' },
-  { id: 'security-plus', title: 'Security+', status: 'future', targetCompletion: '2027-03-01', category: 'Certifications' },
-  { id: 'graduate-ohio-state', title: 'Graduate Ohio State', status: 'future', targetCompletion: '2027-05-01', category: 'Education' },
-  { id: 'build-technical-voice', title: 'Build a Strong Technical Voice', status: 'current', targetCompletion: '2026-12-01', category: 'Personal Development' },
-]
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function readLocalJson(key) {
-  if (!key || typeof window === 'undefined') return null
-  try { return JSON.parse(window.localStorage.getItem(key) || 'null') } catch { return null }
+function Link({ to, ...props }) {
+  const { resolvePath } = useGuestMode()
+  return <RouterLink to={resolvePath(to)} {...props} />
 }
 
-function formatShortDate(value) {
+const PROJECT_STATUS = {
+  PLANNING: 'Planning',
+  BUILDING: 'Building',
+  COMPLETED: 'Completed',
+  ARCHIVED: 'Archived',
+}
+
+const GOAL_STATUS = {
+  current: 'In progress',
+  future: 'Planning',
+  complete: 'Complete',
+  archived: 'Archived',
+}
+
+const EXPERIENCE_LABEL = {
+  BEGINNER: 'Learning',
+  ADVANCED_BEGINNER: 'Developing',
+  INTERMEDIATE: 'Comfortable',
+  ADVANCED: 'Confident',
+  EXPERT: 'Advanced',
+}
+
+const ICON_PATHS = {
+  github: 'M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.02c-3.22.7-3.9-1.36-3.9-1.36-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.72 1.27 3.38.97.1-.75.4-1.27.74-1.56-2.57-.3-5.28-1.29-5.28-5.68 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.47.11-3.06 0 0 .96-.31 3.16 1.18a10.9 10.9 0 0 1 5.75 0c2.2-1.49 3.16-1.18 3.16-1.18.62 1.59.23 2.77.11 3.06.74.81 1.18 1.84 1.18 3.1 0 4.4-2.71 5.38-5.3 5.67.42.36.79 1.07.79 2.16v3.2c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z',
+  linkedin: 'M5.35 7.75H1.1V21.3h4.25V7.75ZM3.23 1A2.47 2.47 0 1 0 3.2 5.94 2.47 2.47 0 0 0 3.23 1ZM21.3 13.54c0-4.08-2.18-5.98-5.09-5.98-2.34 0-3.39 1.29-3.97 2.2V7.75H8v13.54h4.25v-6.7c0-1.77.34-3.49 2.54-3.49 2.16 0 2.19 2.02 2.19 3.6v6.59h4.25l.07-7.75Z',
+  resume: 'M6 2h8l4 4v16H6V2Zm8 1.5V7h3.5M9 11h6M9 15h6M9 19h4',
+  portfolio: 'M4 6h16v14H4V6Zm4 0V3h8v3M4 11h16M10 11v2h4v-2',
+  email: 'M3 5h18v14H3V5Zm1 1 8 7 8-7',
+  arrow: 'M5 12h14m-5-5 5 5-5 5',
+  location: 'M12 21s6-5.4 6-12A6 6 0 0 0 6 9c0 6.6 6 12 6 12Zm0-9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
+  school: 'm3 9 9-5 9 5-9 5-9-5Zm3 2.5V17c3.8 2.7 8.2 2.7 12 0v-5.5M21 9v7',
+  briefcase: 'M4 7h16v13H4V7Zm4 0V4h8v3M4 12h16M10 12v2h4v-2',
+  external: 'M14 4h6v6M20 4l-9 9M18 13v7H4V6h7',
+}
+
+function Icon({ name, size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={name === 'github' || name === 'linkedin' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[name] || ICON_PATHS.arrow} />
+    </svg>
+  )
+}
+
+function formatDate(value, options = { month: 'short', day: 'numeric', year: 'numeric' }) {
   if (!value) return null
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return null
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d)
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat('en-US', options).format(date)
 }
 
-function formatMonthYear(value) {
-  if (!value) return null
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return null
-  return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(d)
+function getProfileIdentity(profile) {
+  const taglineParts = String(profile?.tagline || '').split('|').map((part) => part.trim()).filter(Boolean)
+  const primary = taglineParts.find((part) => /(engineer|developer)/i.test(part) && !/^student\b/i.test(part))
+    || profile?.currentRole
+    || taglineParts[0]
+    || 'Developer'
+  const supporting = taglineParts.filter((part) => part !== primary).join(' · ')
+  return { primary, supporting }
 }
 
-const STATUS_META = {
-  PLANNING:  { label: 'Planning',   color: 'rgba(214,160,89,0.22)',  text: 'var(--color-text-soft)' },
-  BUILDING:  { label: 'Building',   color: 'rgba(231,155,63,0.38)',  text: 'var(--color-brand-ink)' },
-  COMPLETED: { label: 'Completed',  color: 'rgba(247,204,129,0.44)', text: 'var(--color-brand-ink)' },
-  ARCHIVED:  { label: 'Archived',   color: 'rgba(180,140,80,0.22)',  text: 'var(--color-text-muted)' },
-}
-
-function statusMeta(status) {
-  return STATUS_META[String(status || '').replace('IN_PROGRESS', 'BUILDING')] || STATUS_META.PLANNING
-}
-
-// ─── Animated counter ─────────────────────────────────────────────────────────
-function AnimatedNumber({ value, duration = 900 }) {
+function AnimatedNumber({ value }) {
+  const reduceMotion = useReducedMotion()
+  const target = Number(value) || 0
   const [display, setDisplay] = useState(0)
-  const raf = useRef(null)
 
   useEffect(() => {
-    const target = Number(value) || 0
-    const start = Date.now()
-    const from = 0
-
-    const tick = () => {
-      const elapsed = Date.now() - start
-      const progress = Math.min(elapsed / duration, 1)
-      const eased = 1 - Math.pow(1 - progress, 3)
-      setDisplay(Math.round(from + (target - from) * eased))
-      if (progress < 1) raf.current = requestAnimationFrame(tick)
+    if (reduceMotion) return undefined
+    let frameId
+    const start = performance.now()
+    const tick = (now) => {
+      const progress = Math.min((now - start) / 650, 1)
+      setDisplay(Math.round(target * (1 - ((1 - progress) ** 3))))
+      if (progress < 1) frameId = requestAnimationFrame(tick)
     }
+    frameId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frameId)
+  }, [reduceMotion, target])
 
-    raf.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf.current)
-  }, [value, duration])
-
-  return <>{display}</>
+  return reduceMotion ? target : display
 }
 
-// ─── Reusable card shell ──────────────────────────────────────────────────────
-function DCard({ children, className = '', href, delay = 0 }) {
-  const inner = (
-    <motion.div
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.42, delay, ease: [0.2, 0.8, 0.2, 1] }}
-      whileHover={{ y: -4, boxShadow: '0 28px 64px rgba(14,9,6,0.44)' }}
-      className={`db-card ${className}`}
-    >
+function SpotlightSurface({ children, className = '' }) {
+  const ref = useRef(null)
+  const reduceMotion = useReducedMotion()
+
+  const handlePointerMove = (event) => {
+    if (reduceMotion || event.pointerType === 'touch' || !ref.current) return
+    const bounds = ref.current.getBoundingClientRect()
+    ref.current.style.setProperty('--spot-x', `${event.clientX - bounds.left}px`)
+    ref.current.style.setProperty('--spot-y', `${event.clientY - bounds.top}px`)
+  }
+
+  return (
+    <div ref={ref} onPointerMove={handlePointerMove} className={`db-surface db-spotlight ${className}`.trim()}>
       {children}
-    </motion.div>
-  )
-  if (href) return <Link to={href} className="block">{inner}</Link>
-  return inner
-}
-
-function DEyebrow({ children }) {
-  return <p className="db-eyebrow">{children}</p>
-}
-
-function DTitle({ children, className = '' }) {
-  return <h3 className={`db-title ${className}`}>{children}</h3>
-}
-
-// ─── Stat tile (hero row) ─────────────────────────────────────────────────────
-function StatTile({ icon, label, value, sub, delay = 0, href }) {
-  const content = (
-    <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.38, delay, ease: [0.2, 0.8, 0.2, 1] }}
-      className="db-stat-tile"
-    >
-      <span className="db-stat-icon">{icon}</span>
-      <div>
-        <p className="db-stat-label">{label}</p>
-        <p className="db-stat-value">
-          {typeof value === 'number' ? <AnimatedNumber value={value} /> : value}
-        </p>
-        {sub ? <p className="db-stat-sub">{sub}</p> : null}
-      </div>
-    </motion.div>
-  )
-  if (href) return <Link to={href} className="block">{content}</Link>
-  return content
-}
-
-// ─── Profile snapshot ─────────────────────────────────────────────────────────
-function ProfileSnapshot({ profile }) {
-  const imageUrl = profile?.profileImageUrl || profile?.profileImage
-  const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ')
-  const school = profile?.school || profile?.university
-
-  return (
-    <DCard delay={0.06} href="/profile">
-      <DEyebrow>Profile</DEyebrow>
-      <div className="db-profile-row">
-        {imageUrl ? (
-          <img src={imageUrl} alt={fullName} className="db-profile-avatar" />
-        ) : (
-          <div className="db-profile-avatar-fallback">
-            {(fullName || 'U').slice(0, 2).toUpperCase()}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <DTitle>{fullName || 'Your Name'}</DTitle>
-          {profile?.currentRole ? <p className="db-meta">{profile.currentRole}</p> : null}
-          {profile?.pronouns ? <p className="db-meta">{profile.pronouns}</p> : null}
-        </div>
-      </div>
-      <div className="mt-4 grid gap-2 text-sm">
-        {school ? (
-          <div className="db-info-row">
-            <span className="db-info-label">School</span>
-            <span className="db-info-value">{school}</span>
-          </div>
-        ) : null}
-        {profile?.major ? (
-          <div className="db-info-row">
-            <span className="db-info-label">Major</span>
-            <span className="db-info-value">{profile.major}</span>
-          </div>
-        ) : null}
-        {profile?.graduationYear ? (
-          <div className="db-info-row">
-            <span className="db-info-label">Graduating</span>
-            <span className="db-info-value">{profile.graduationYear}</span>
-          </div>
-        ) : null}
-        {profile?.favoriteLanguage ? (
-          <div className="db-info-row">
-            <span className="db-info-label">Fav Language</span>
-            <span className="db-info-value">{profile.favoriteLanguage}</span>
-          </div>
-        ) : null}
-        {profile?.favoriteFramework ? (
-          <div className="db-info-row">
-            <span className="db-info-label">Fav Framework</span>
-            <span className="db-info-value">{profile.favoriteFramework}</span>
-          </div>
-        ) : null}
-      </div>
-      {(profile?.githubUrl || profile?.linkedinUrl || profile?.twitterUrl) ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {profile?.githubUrl ? <a href={profile.githubUrl} target="_blank" rel="noreferrer" className="db-chip" onClick={(e) => e.stopPropagation()}>GitHub</a> : null}
-          {profile?.linkedinUrl ? <a href={profile.linkedinUrl} target="_blank" rel="noreferrer" className="db-chip" onClick={(e) => e.stopPropagation()}>LinkedIn</a> : null}
-          {profile?.twitterUrl ? <a href={profile.twitterUrl} target="_blank" rel="noreferrer" className="db-chip" onClick={(e) => e.stopPropagation()}>Twitter</a> : null}
-        </div>
-      ) : null}
-    </DCard>
-  )
-}
-
-// ─── Current project card ─────────────────────────────────────────────────────
-function CurrentProjectCard({ projects }) {
-  const navigate = useNavigate()
-  const active = projects
-    .filter((p) => {
-      const s = String(p.status || '').replace('IN_PROGRESS', 'BUILDING')
-      return s === 'BUILDING' || s === 'PLANNING'
-    })
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0]
-
-  if (!active) {
-    return (
-      <DCard delay={0.08}>
-        <DEyebrow>Current Project</DEyebrow>
-        <DTitle className="mt-2">No active projects</DTitle>
-        <p className="db-meta mt-2">Create a project to see it here.</p>
-        <Link to="/projects" className="db-action-btn mt-4 inline-flex">Open Projects</Link>
-      </DCard>
-    )
-  }
-
-  const meta = statusMeta(active.status)
-  const stack = (active.techStack || active.githubLanguages || []).slice(0, 5)
-
-  return (
-    <DCard delay={0.08}>
-      {active.bannerImageUrl ? (
-        <img src={active.bannerImageUrl} alt={active.title} className="db-project-banner" />
-      ) : (
-        <div className="db-project-banner-placeholder" />
-      )}
-      <div className="mt-4">
-        <DEyebrow>Current Project</DEyebrow>
-        <div className="mt-2 flex items-start justify-between gap-3">
-          <DTitle>{active.title}</DTitle>
-          <span
-            className="db-status-pill flex-shrink-0"
-            style={{ background: meta.color, color: meta.text }}
-          >
-            {meta.label}
-          </span>
-        </div>
-        {active.description ? (
-          <p className="db-meta mt-2 line-clamp-2">{active.description}</p>
-        ) : null}
-        {active.updatedAt ? (
-          <p className="db-meta mt-1 text-[0.72rem]">Updated {formatShortDate(active.updatedAt)}</p>
-        ) : null}
-        {stack.length ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {stack.map((t) => <span key={t} className="db-chip">{t}</span>)}
-          </div>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => navigate('/projects')}
-          className="db-action-btn mt-4 w-full"
-        >
-          Open Project
-        </button>
-      </div>
-    </DCard>
-  )
-}
-
-// ─── Tech stack snapshot ──────────────────────────────────────────────────────
-function TechStackCard({ skills }) {
-  const [hovered, setHovered] = useState(null)
-
-  const techList = skills
-    .sort((a, b) => (b.yearsExperience || 0) - (a.yearsExperience || 0))
-    .slice(0, 18)
-
-  return (
-    <DCard delay={0.1}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <DEyebrow>Tech Stack</DEyebrow>
-          <DTitle className="mt-1">Skills snapshot</DTitle>
-        </div>
-        <Link to="/skills" className="db-chip db-chip--accent flex-shrink-0">View all</Link>
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {techList.map((skill, i) => (
-          <motion.button
-            key={skill.id || skill.name}
-            type="button"
-            initial={{ opacity: 0, scale: 0.88 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.12 + i * 0.04, duration: 0.28 }}
-            className={`db-tech-chip ${hovered === skill.id ? 'db-tech-chip--active' : ''}`}
-            onMouseEnter={() => setHovered(skill.id)}
-            onMouseLeave={() => setHovered(null)}
-          >
-            {skill.name}
-          </motion.button>
-        ))}
-      </div>
-
-      <AnimatePresence>
-        {hovered ? (() => {
-          const sk = skills.find((s) => s.id === hovered)
-          if (!sk) return null
-          const projs = (sk.relatedProjects || []).map((p) => typeof p === 'string' ? p : p.title).filter(Boolean)
-          return (
-            <motion.div
-              key={hovered}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
-              transition={{ duration: 0.18 }}
-              className="db-tech-tooltip"
-            >
-              <p className="font-semibold text-[var(--color-text)]">{sk.name}</p>
-              {sk.yearsExperience ? <p className="db-meta">{sk.yearsExperience} yr{sk.yearsExperience !== 1 ? 's' : ''} experience</p> : null}
-              {sk.projectsBuilt != null ? <p className="db-meta">{sk.projectsBuilt} project{sk.projectsBuilt !== 1 ? 's' : ''} built</p> : null}
-              {projs.length ? <p className="db-meta">{projs.slice(0, 2).join(' · ')}</p> : null}
-            </motion.div>
-          )
-        })() : null}
-      </AnimatePresence>
-    </DCard>
-  )
-}
-
-// ─── Featured certification ───────────────────────────────────────────────────
-function FeaturedCertCard({ certs }) {
-  const featured = certs
-    .filter((c) => c.status === 'earned')
-    .sort((a, b) => new Date(b.issueDate || 0) - new Date(a.issueDate || 0))[0]
-    || certs.find((c) => c.status === 'in-progress')
-
-  if (!featured) {
-    return (
-      <DCard delay={0.12} href="/certifications">
-        <DEyebrow>Certifications</DEyebrow>
-        <DTitle className="mt-1">No certifications yet</DTitle>
-        <p className="db-meta mt-2">Add certifications to see them here.</p>
-      </DCard>
-    )
-  }
-
-  return (
-    <DCard delay={0.12} href="/certifications">
-      <DEyebrow>Latest Certification</DEyebrow>
-      <div className="mt-3 flex items-center gap-3">
-        <div
-          className="db-cert-logo"
-          style={featured.accentColor ? { background: `color-mix(in srgb, ${featured.accentColor} 22%, rgba(64,44,28,0.9))`, borderColor: `color-mix(in srgb, ${featured.accentColor} 44%, rgba(247,204,129,0.28))` } : undefined}
-        >
-          {featured.logo}
-        </div>
-        <div className="min-w-0 flex-1">
-          <DTitle>{featured.name}</DTitle>
-          <p className="db-meta">{featured.provider}</p>
-          {featured.issueDate ? <p className="db-meta">{formatMonthYear(featured.issueDate)}</p> : null}
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {(featured.skillsGained || []).slice(0, 4).map((s) => (
-          <span key={s} className="db-chip">{s}</span>
-        ))}
-      </div>
-      <p className="db-action-label mt-3">View all certifications →</p>
-    </DCard>
-  )
-}
-
-// ─── Current focus (from Goals) ───────────────────────────────────────────────
-function CurrentFocusCard({ goals }) {
-  const active = goals.filter((g) => g.status === 'current').slice(0, 3)
-  const pinned = goals.filter((g) => g.pinned && g.status !== 'archived').slice(0, 2)
-  const focused = active.length ? active : pinned
-
-  return (
-    <DCard delay={0.14}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <DEyebrow>Current Focus</DEyebrow>
-          <DTitle className="mt-1">What I'm working on</DTitle>
-        </div>
-        <Link to="/goals" className="db-chip db-chip--accent flex-shrink-0">All goals</Link>
-      </div>
-      {focused.length ? (
-        <div className="mt-4 space-y-2.5">
-          {focused.map((goal, i) => (
-            <motion.div
-              key={goal.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.18 + i * 0.07, duration: 0.3 }}
-              className="db-focus-row"
-            >
-              <span className="db-focus-dot" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-[var(--color-text)]">{goal.title}</p>
-                <p className="db-meta">{goal.category}{goal.targetCompletion ? ` · ${formatShortDate(goal.targetCompletion)}` : ''}</p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      ) : (
-        <p className="db-meta mt-3">No active goals. Add goals to see your current focus here.</p>
-      )}
-    </DCard>
-  )
-}
-
-// ─── Upcoming milestone ───────────────────────────────────────────────────────
-function UpcomingMilestoneCard({ goals }) {
-  const upcoming = goals
-    .filter((g) => g.status !== 'complete' && g.status !== 'archived' && g.targetCompletion)
-    .sort((a, b) => new Date(a.targetCompletion) - new Date(b.targetCompletion))
-    .slice(0, 3)
-
-  return (
-    <DCard delay={0.16} href="/goals">
-      <DEyebrow>Upcoming Milestones</DEyebrow>
-      <DTitle className="mt-1">Next on the roadmap</DTitle>
-      {upcoming.length ? (
-        <div className="mt-4 space-y-3">
-          {upcoming.map((goal, i) => (
-            <div key={goal.id} className="db-milestone-row">
-              <span className="db-milestone-num">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-[var(--color-text)]">{goal.title}</p>
-                {goal.targetCompletion ? (
-                  <p className="db-meta">{formatShortDate(goal.targetCompletion)}</p>
-                ) : null}
-              </div>
-              <span className="db-chip flex-shrink-0">{goal.category}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="db-meta mt-3">No upcoming milestones yet.</p>
-      )}
-    </DCard>
-  )
-}
-
-// ─── Recent activity ──────────────────────────────────────────────────────────
-function RecentActivityCard({ profile, projects, skills, resume }) {
-  const entries = buildRecentActivity(profile, projects, skills)
-
-  const resumeEntry = resume?.uploaded && resume?.lastUpdated
-    ? [{ type: 'resume', label: 'Resume uploaded', description: resume.fileName || 'Resume.pdf', date: new Date(resume.lastUpdated) }]
-    : []
-
-  const all = [...resumeEntry, ...entries]
-    .sort((a, b) => b.date - a.date)
-    .slice(0, 7)
-
-  const ICONS = { profile: '👤', project: '🛠', skill: '💻', resume: '📄' }
-
-  return (
-    <DCard delay={0.18}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <DEyebrow>Activity</DEyebrow>
-          <DTitle className="mt-1">Recent changes</DTitle>
-        </div>
-      </div>
-      {all.length ? (
-        <div className="mt-4 space-y-2.5">
-          {all.map((entry, i) => (
-            <motion.div
-              key={`${entry.type}-${entry.label}-${entry.date.toISOString()}`}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.22 + i * 0.05, duration: 0.28 }}
-              className="db-activity-row"
-            >
-              <span className="db-activity-icon">{ICONS[entry.type] || '·'}</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-[var(--color-text)]">{entry.label}</p>
-                <p className="db-meta">{entry.description}</p>
-              </div>
-              <span className="db-meta flex-shrink-0 text-right">
-                {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(entry.date)}
-              </span>
-            </motion.div>
-          ))}
-        </div>
-      ) : (
-        <p className="db-meta mt-4">No activity yet.</p>
-      )}
-    </DCard>
-  )
-}
-
-// ─── Projects overview ────────────────────────────────────────────────────────
-function ProjectsOverviewCard({ projects }) {
-  const recent = [...projects]
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
-    .slice(0, 4)
-
-  const counts = projects.reduce((acc, p) => {
-    const s = String(p.status || '').replace('IN_PROGRESS', 'BUILDING')
-    acc[s] = (acc[s] || 0) + 1
-    return acc
-  }, {})
-
-  return (
-    <DCard delay={0.1}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <DEyebrow>Projects</DEyebrow>
-          <DTitle className="mt-1">All {projects.length} project{projects.length !== 1 ? 's' : ''}</DTitle>
-        </div>
-        <Link to="/projects" className="db-chip db-chip--accent flex-shrink-0">Open</Link>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {['PLANNING', 'BUILDING', 'COMPLETED', 'ARCHIVED'].map((s) => {
-          const m = statusMeta(s)
-          return (
-            <div key={s} className="db-count-tile" style={{ borderColor: m.color }}>
-              <p className="db-count-num" style={{ color: m.text }}>
-                <AnimatedNumber value={counts[s] || 0} />
-              </p>
-              <p className="db-count-label">{m.label}</p>
-            </div>
-          )
-        })}
-      </div>
-
-      {recent.length ? (
-        <div className="mt-4 space-y-2">
-          {recent.map((p) => {
-            const m = statusMeta(p.status)
-            return (
-              <div key={p.id} className="db-project-row">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-[var(--color-text)]">{p.title}</p>
-                  <p className="db-meta">{formatShortDate(p.updatedAt || p.createdAt)}</p>
-                </div>
-                <span className="db-status-pill flex-shrink-0" style={{ background: m.color, color: m.text }}>{m.label}</span>
-              </div>
-            )
-          })}
-        </div>
-      ) : null}
-    </DCard>
-  )
-}
-
-// ─── Certifications strip (all earned) ───────────────────────────────────────
-function CertificationsCard({ certs }) {
-  const earned = certs.filter((c) => c.status === 'earned')
-  const inProgress = certs.filter((c) => c.status === 'in-progress')
-  const planned = certs.filter((c) => c.status === 'planned')
-
-  return (
-    <DCard delay={0.2} href="/certifications">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <DEyebrow>Certifications</DEyebrow>
-          <DTitle className="mt-1">Achievement gallery</DTitle>
-        </div>
-        <div className="flex gap-2 flex-shrink-0">
-          <span className="db-chip db-chip--accent">{earned.length} earned</span>
-          {inProgress.length ? <span className="db-chip">{inProgress.length} in progress</span> : null}
-        </div>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-3">
-        {certs.slice(0, 8).map((cert) => (
-          <div
-            key={cert.id}
-            className="db-cert-mini"
-            style={cert.accentColor ? { borderColor: `color-mix(in srgb, ${cert.accentColor} 36%, rgba(214,160,89,0.22))` } : undefined}
-            title={cert.name}
-          >
-            <span className="text-base">{cert.logo}</span>
-            <span className="db-meta truncate max-w-[7rem]">{cert.name}</span>
-            <span
-              className="db-cert-mini-dot flex-shrink-0"
-              style={{
-                background: cert.status === 'earned' ? '#f7cc81' : cert.status === 'in-progress' ? '#e79b3f' : 'rgba(200,145,84,0.5)',
-              }}
-            />
-          </div>
-        ))}
-      </div>
-      {planned.length ? (
-        <p className="db-meta mt-3">{planned.length} planned · <span className="text-[var(--color-brand-ink)]">View roadmap →</span></p>
-      ) : null}
-    </DCard>
-  )
-}
-
-// ─── Resume card ──────────────────────────────────────────────────────────────
-function ResumeCard({ resume, onUploadClick, uploading }) {
-  const has = Boolean(resume?.uploaded)
-  return (
-    <DCard delay={0.22}>
-      <DEyebrow>Resume</DEyebrow>
-      <DTitle className="mt-1">{has ? (resume.fileName || 'Resume.pdf') : 'No resume uploaded'}</DTitle>
-      {has && resume?.lastUpdated ? (
-        <p className="db-meta mt-1">Last updated {formatShortDate(resume.lastUpdated)}</p>
-      ) : null}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onUploadClick}
-          disabled={uploading}
-          className="db-action-btn"
-        >
-          {uploading ? 'Uploading…' : has ? 'Replace' : 'Upload PDF'}
-        </button>
-        <Link to="/resume-workspace" className="db-chip">Open workspace</Link>
-      </div>
-    </DCard>
-  )
-}
-
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
-export function DashboardPage() {
-  const { user } = useUser()
-  const { getToken } = useAuth()
-
-  const [profile, setProfile] = useState(() => readStoredProfile())
-  const [projects, setProjects] = useState([])
-  const [skills, setSkills] = useState([])
-  const [resume, setResume] = useState(null)
-  const [uploading, setUploading] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  // read certifications from localStorage (CertificationsPage persists them)
-  const [certs, setCerts] = useState(() => {
-    const stored = readLocalJson(CERTS_KEY)
-    return Array.isArray(stored) ? stored : []
-  })
-
-  // goals live in-memory on GoalsPage; we use the fallback copy here
-  const goals = FALLBACK_GOALS
-
-  const resumeInputRef = useRef(null)
-
-  const refresh = useCallback(async () => {
-    const [profileRes, projectRes, skillRes, resumeRes] = await Promise.allSettled([
-      authenticatedRequest('/api/profile', {}, getToken),
-      fetchProjects(getToken),
-      fetchSkills(getToken),
-      fetchWorkspaceResume(getToken),
-    ])
-
-    if (profileRes.status === 'fulfilled' && profileRes.value) {
-      setProfile(profileRes.value)
-      saveStoredProfile(profileRes.value)
-    }
-    if (projectRes.status === 'fulfilled') {
-      setProjects(Array.isArray(projectRes.value) ? projectRes.value : [])
-    }
-    if (skillRes.status === 'fulfilled') {
-      setSkills(Array.isArray(skillRes.value) ? skillRes.value : [])
-    }
-    if (resumeRes.status === 'fulfilled') {
-      setResume(resumeRes.value || null)
-    }
-
-    // re-read certs from localStorage in case the user updated them
-    const storedCerts = readLocalJson(CERTS_KEY)
-    if (Array.isArray(storedCerts)) setCerts(storedCerts)
-
-    setLoading(false)
-  }, [getToken])
-
-  useEffect(() => {
-    const id = window.setTimeout(() => refresh().catch(() => setLoading(false)), 0)
-    return () => window.clearTimeout(id)
-  }, [refresh])
-
-  // background refresh every 3 min
-  useEffect(() => {
-    const id = window.setInterval(() => refresh().catch(() => {}), 180000)
-    return () => window.clearInterval(id)
-  }, [refresh])
-
-  const handleUploadClick = () => resumeInputRef.current?.click()
-
-  const handleFileChange = async (e) => {
-    const [file] = Array.from(e.target.files || [])
-    if (!file) return
-    const isPdf = String(file.type || '').includes('pdf') || /\.pdf$/i.test(file.name)
-    if (!isPdf) { e.target.value = ''; return }
-
-    setUploading(true)
-    try {
-      const next = await uploadWorkspaceResume(file, getToken)
-      setResume(next)
-    } finally {
-      setUploading(false)
-      e.target.value = ''
-    }
-  }
-
-  const userName = user?.firstName || profile?.firstName || 'there'
-  const greeting = getTimeGreeting()
-
-  const earnedCerts = certs.filter((c) => c.status === 'earned').length
-
-  return (
-    <div className="page-shell page-shell--wide page-stack gap-5 pb-14 db-page">
-
-      {/* ── Hero ── */}
-      <section className="db-hero">
-        <div className="db-hero-glow" />
-        <div className="relative z-10">
-          <p className="db-eyebrow">{greeting}</p>
-          <h1 className="db-hero-name">
-            {userName}
-            {profile?.openToWork ? (
-              <span className="db-open-badge">
-                <span className="db-open-dot" />
-                {profile.jobType ? `Open to ${profile.jobType}` : 'Open to work'}
-              </span>
-            ) : null}
-          </h1>
-          {profile?.tagline ? (
-            <p className="db-hero-tagline">{profile.tagline}</p>
-          ) : profile?.currentRole ? (
-            <p className="db-hero-tagline">{profile.currentRole}</p>
-          ) : null}
-        </div>
-
-        <div className="db-stat-row">
-          {[
-            { icon: '🛠', label: 'Projects',      value: projects.length,                        href: '/projects' },
-            { icon: '💻', label: 'Skills',         value: skills.length,                          href: '/skills' },
-            { icon: '🏆', label: 'Certifications', value: earnedCerts,                            href: '/certifications' },
-            { icon: '📚', label: 'Years Coding',   value: profile?.yearsCoding ?? '—',            href: null },
-            { icon: '🎓', label: 'Graduating',     value: profile?.graduationYear ?? '—',         href: null },
-            { icon: '🏫', label: 'School',         value: profile?.school?.split(' ').pop() ?? '—', href: '/profile' },
-          ].map(({ icon, label, value, href }, i) => (
-            <StatTile key={label} icon={icon} label={label} value={value} href={href} delay={0.04 + i * 0.05} />
-          ))}
-        </div>
-      </section>
-
-      {loading ? (
-        <div className="db-card">
-          <p className="db-meta">Loading workspace data…</p>
-        </div>
-      ) : null}
-
-      {/* ── Row 1: Profile + Current Project + Current Focus ── */}
-      <div className="db-grid-3">
-        <ProfileSnapshot profile={profile} />
-        <CurrentProjectCard projects={projects} />
-        <CurrentFocusCard goals={goals} />
-      </div>
-
-      {/* ── Row 2: Tech stack (wide) + Featured cert ── */}
-      <div className="db-grid-2-1">
-        <TechStackCard skills={skills} />
-        <FeaturedCertCard certs={certs} />
-      </div>
-
-      {/* ── Row 3: Projects overview + Upcoming milestones + Activity ── */}
-      <div className="db-grid-3">
-        <ProjectsOverviewCard projects={projects} />
-        <UpcomingMilestoneCard goals={goals} />
-        <RecentActivityCard profile={profile} projects={projects} skills={skills} resume={resume} />
-      </div>
-
-      {/* ── Row 4: All certifications + Resume ── */}
-      <div className="db-grid-2-1">
-        <CertificationsCard certs={certs} />
-        <ResumeCard resume={resume} onUploadClick={handleUploadClick} uploading={uploading} />
-      </div>
-
-      <input ref={resumeInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleFileChange} />
     </div>
   )
 }
 
+function Reveal({ children, className = '', delay = 0 }) {
+  const reduceMotion = useReducedMotion()
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: reduceMotion ? 0 : 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.12 }}
+      transition={{ duration: reduceMotion ? 0.12 : 0.46, delay: reduceMotion ? 0 : delay, ease: [0.2, 0.8, 0.2, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.section>
+  )
+}
 
+function SectionHeading({ eyebrow, title, action }) {
+  return (
+    <div className="db-section-heading">
+      <div>
+        <p className="db-eyebrow">{eyebrow}</p>
+        <h2 className="db-section-title">{title}</h2>
+      </div>
+      {action}
+    </div>
+  )
+}
+
+function CareerAction({ href, to, icon, label, variant, external = false }) {
+  const className = `db-career-action db-career-action--${variant}`
+  const content = <><Icon name={icon} /><span>{label}</span><Icon name="arrow" size={15} /></>
+  if (to) return <Link to={to} className={className}>{content}</Link>
+  return <a href={href} target={external ? '_blank' : undefined} rel={external ? 'noreferrer' : undefined} className={className}>{content}</a>
+}
+
+function IdentityHero({ profile, email, commandDeck }) {
+  const reduceMotion = useReducedMotion()
+  const { isGuestMode, basePath } = useGuestMode()
+  const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.username || 'Your profile'
+  const initials = fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+  const schoolLine = [profile?.major, profile?.school].filter(Boolean).join(' · ')
+  const identity = getProfileIdentity(profile)
+  const portfolioPath = isGuestMode ? basePath.replace(/\/vault$/, '') : profile?.username && profile?.portfolioEnabled ? `/portfolio/${profile.username}` : '/profile'
+  const actions = [
+    profile?.githubUrl && { href: profile.githubUrl, icon: 'github', label: 'GitHub', variant: 'github', external: true },
+    profile?.linkedinUrl && { href: profile.linkedinUrl, icon: 'linkedin', label: 'LinkedIn', variant: 'linkedin', external: true },
+    { to: '/resume-workspace', icon: 'resume', label: commandDeck?.evidence?.hasResume ? 'Resume' : 'Add Resume', variant: 'resume' },
+    { to: portfolioPath, icon: 'portfolio', label: isGuestMode ? 'Recruiter Overview' : profile?.portfolioEnabled ? 'Public Portfolio' : 'Enable Portfolio', variant: 'portfolio' },
+    email && { href: `mailto:${email}`, icon: 'email', label: 'Email', variant: 'email' },
+  ].filter(Boolean)
+
+  return (
+    <SpotlightSurface className="db-identity">
+      <div className="db-identity-bloom" aria-hidden="true" />
+      <div className="db-identity-main">
+        <motion.div
+          initial={{ opacity: 0, scale: reduceMotion ? 1 : 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.48, delay: 0.08 }}
+          className="db-portrait-shell"
+        >
+          {profile?.profileImageUrl ? (
+            <img src={profile.profileImageUrl} alt={`${fullName} profile`} className="db-portrait" />
+          ) : (
+            <div className="db-portrait db-portrait--fallback" aria-label={`${fullName} initials`}>{initials}</div>
+          )}
+        </motion.div>
+
+        <div className="db-identity-copy">
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.12 }} className="db-eyebrow">
+            {getTimeGreeting()} · Developer workspace
+          </motion.p>
+          <motion.h1 initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18, duration: 0.42 }} className="db-identity-name">
+            {fullName}
+          </motion.h1>
+          <motion.div initial={{ opacity: 0, y: reduceMotion ? 0 : 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}>
+            <p className="db-identity-role">{identity.primary}</p>
+            {identity.supporting ? <p className="db-identity-tagline">{identity.supporting}</p> : null}
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="db-identity-facts">
+            {schoolLine ? <span><Icon name="school" size={16} />{schoolLine}</span> : null}
+            {profile?.location ? <span><Icon name="location" size={16} />{profile.location}</span> : null}
+            {profile?.graduationYear ? <span><Icon name="briefcase" size={16} />Class of {profile.graduationYear}</span> : null}
+          </motion.div>
+
+          {profile?.openToWork ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.34 }} className="db-open-state">
+              <span className="db-live-dot" />
+              {profile.jobType ? `Open to ${profile.jobType}` : 'Open to work'}
+            </motion.div>
+          ) : null}
+        </div>
+      </div>
+
+      <motion.div initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: reduceMotion ? 0 : 0.055, delayChildren: 0.34 } } }} className="db-career-actions">
+        {actions.map((action) => (
+          <motion.div key={action.label} className={`db-career-action-wrap db-career-action-wrap--${action.variant}`} variants={{ hidden: { opacity: 0, y: reduceMotion ? 0 : 8 }, visible: { opacity: 1, y: 0 } }}>
+            <CareerAction {...action} />
+          </motion.div>
+        ))}
+      </motion.div>
+    </SpotlightSurface>
+  )
+}
+
+function StatusRail({ profile, commandDeck }) {
+  const { isGuestMode } = useGuestMode()
+  const currentProject = commandDeck?.currentProject
+  const learning = commandDeck?.credentialSpotlight?.learning
+  const milestone = commandDeck?.nextMilestone
+  const statuses = [
+    currentProject && { label: 'Building now', value: currentProject.title, href: '/projects', active: true },
+    learning && { label: 'Current learning', value: learning.name, href: '/certifications', active: true },
+    milestone && { label: 'Next milestone', value: milestone.title, detail: formatDate(milestone.targetCompletion), href: `/goals?goal=${milestone.id}` },
+    !isGuestMode && profile?.githubUrl && { label: 'GitHub projects', value: 'Linked repository metadata', href: '/projects#github-sync' },
+    profile?.openToWork && { label: 'Availability', value: profile.jobType ? `Open to ${profile.jobType}` : 'Open to work', href: '/profile', active: true },
+  ].filter(Boolean)
+
+  return (
+    <SpotlightSurface className="db-now">
+      <div className="db-now-header">
+        <div>
+          <p className="db-eyebrow">Live status</p>
+          <h2>Now</h2>
+        </div>
+        <span className="db-now-signal"><span />Live</span>
+      </div>
+      <div className="db-now-list">
+        {statuses.length ? statuses.map((status, index) => (
+          <motion.div key={status.label} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.42 + index * 0.07 }}>
+            <Link to={status.href} className="db-now-item">
+              <span className={status.active ? 'db-live-dot' : 'db-status-dot'} />
+              <span className="min-w-0">
+                <span className="db-now-label">{status.label}</span>
+                <strong>{status.value}</strong>
+                {status.detail ? <small>{status.detail}</small> : null}
+              </span>
+              <Icon name="arrow" size={15} />
+            </Link>
+          </motion.div>
+        )) : <p className="db-empty-copy">Add active projects, goals, or credentials to establish your current state.</p>}
+      </div>
+    </SpotlightSurface>
+  )
+}
+
+function CurrentBuild({ project, highlightedTechnology }) {
+  const showcaseProject = useMemo(() => project ? decorateProjectShowcase(project, 0) : null, [project])
+  if (!showcaseProject) {
+    return (
+      <Reveal>
+        <SpotlightSurface className="db-current-build db-empty-panel">
+          <SectionHeading eyebrow="Current build" title="Your next build starts here" />
+          <p className="db-empty-copy">Feature an active project to make it the centerpiece of your command deck.</p>
+          <Link to="/projects/new" className="db-inline-action">Create a project <Icon name="arrow" size={15} /></Link>
+        </SpotlightSurface>
+      </Reveal>
+    )
+  }
+
+  const stack = showcaseProject.showcase.techStack || []
+  const isHighlighted = highlightedTechnology && stack.some((item) => item.toLowerCase() === highlightedTechnology.toLowerCase())
+  const persistedArtwork = showcaseProject.image || showcaseProject.bannerImageUrl || ''
+  const usesFallbackArtwork = Boolean(showcaseProject.showcase.image && showcaseProject.showcase.image !== persistedArtwork)
+
+  return (
+    <Reveal>
+      <SpotlightSurface className={`db-current-build ${isHighlighted ? 'db-current-build--linked' : ''}`}>
+        <div className={`db-build-image-wrap ${usesFallbackArtwork ? 'db-build-image-wrap--fallback' : ''}`.trim()}>
+          <img src={showcaseProject.showcase.image} alt={`${showcaseProject.title} project artwork`} className="db-build-image" decoding="async" />
+          <div className="db-build-scrim" />
+          <div className="db-build-kicker"><span className="db-live-dot" />Current build</div>
+          <span className={`db-project-status db-project-status--${String(showcaseProject.status).toLowerCase()}`}>
+            {PROJECT_STATUS[showcaseProject.status] || showcaseProject.status}
+          </span>
+        </div>
+        <div className="db-build-content">
+          <div className="db-build-copy">
+            <p className="db-eyebrow">Featured engineering work</p>
+            <h2>{showcaseProject.title}</h2>
+            <p>{showcaseProject.description}</p>
+            <div className="db-build-meta">
+              {showcaseProject.updatedAt ? <span>Updated {formatDate(showcaseProject.githubUpdatedAt || showcaseProject.updatedAt)}</span> : null}
+            </div>
+          </div>
+          <div className="db-build-stack" aria-label="Project technologies">
+            {stack.slice(0, 6).map((technology) => <span key={technology}>{technology}</span>)}
+          </div>
+          <div className="db-build-actions">
+            {showcaseProject.githubUrl ? <a href={showcaseProject.githubUrl} target="_blank" rel="noreferrer" className="db-project-action db-project-action--repository"><Icon name="github" />Repository</a> : null}
+            {showcaseProject.liveDemoUrl ? <a href={showcaseProject.liveDemoUrl} target="_blank" rel="noreferrer" className="db-project-action"><Icon name="external" />Live demo</a> : null}
+            <Link to="/projects" className="db-project-action db-project-action--primary">Open Project <Icon name="arrow" /></Link>
+          </div>
+        </div>
+      </SpotlightSurface>
+    </Reveal>
+  )
+}
+
+function EvidenceStrip({ evidence, currentProject }) {
+  const items = [
+    { key: 'projects', value: evidence?.projects || 0, label: 'Projects', to: '/projects' },
+    { key: 'technologies', value: evidence?.technologies || 0, label: 'Technologies', to: '/skills' },
+    { key: 'credentials', value: evidence?.credentials || 0, label: 'Earned credentials', to: '/certifications' },
+    { key: 'activeGoals', value: evidence?.activeGoals || 0, label: 'Active goals', to: '/goals' },
+    { key: 'githubRepositories', value: evidence?.githubRepositories || 0, label: 'GitHub repositories', to: '/projects' },
+    { key: 'currentBuild', value: currentProject?.title || '—', label: 'Current build', to: '/projects' },
+  ]
+
+  return (
+    <Reveal className="db-evidence" delay={0.03}>
+      {items.map((item) => (
+        <Link to={item.to} key={item.key} className="db-evidence-item">
+          <strong>{typeof item.value === 'number' ? <AnimatedNumber value={item.value} /> : item.value}</strong>
+          <span>{item.label}</span>
+          <Icon name="arrow" size={14} />
+        </Link>
+      ))}
+    </Reveal>
+  )
+}
+
+function TechnologyBench({ skills, onHover }) {
+  return (
+    <Reveal className="db-technology-section">
+      <SectionHeading eyebrow="Technology bench" title="The tools behind the work" action={<Link to="/skills" className="db-text-link">All technologies <Icon name="arrow" size={15} /></Link>} />
+      {skills?.length ? (
+        <div className="db-tech-grid">
+          {skills.map((skill, index) => {
+            const projects = Array.isArray(skill.relatedProjects) ? skill.relatedProjects : []
+            return (
+              <motion.div key={skill.id} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * 0.045 }}>
+                <Link
+                  to={`/skills?technology=${encodeURIComponent(skill.name)}`}
+                  onMouseEnter={() => onHover(skill.name)}
+                  onMouseLeave={() => onHover('')}
+                  onFocus={() => onHover(skill.name)}
+                  onBlur={() => onHover('')}
+                  className="db-tech-tile"
+                >
+                  <TechnologyLogo technologyKey={skill.technologyKey} name={skill.name} size="md" />
+                  <span className="db-tech-copy">
+                    <strong>{skill.name}</strong>
+                    <span>{EXPERIENCE_LABEL[skill.experienceLevel] || skill.experienceLevel}</span>
+                    <small>{Number(skill.yearsExperience || 0)} yr{Number(skill.yearsExperience || 0) === 1 ? '' : 's'} · {Number(skill.projectsBuilt || 0)} project{Number(skill.projectsBuilt || 0) === 1 ? '' : 's'}</small>
+                  </span>
+                  <span className="db-tech-projects">{projects.length ? projects.slice(0, 2).map((project) => project.title).join(' · ') : 'Ready for a project'}</span>
+                </Link>
+              </motion.div>
+            )
+          })}
+        </div>
+      ) : <p className="db-empty-copy">Add technologies to build your bench.</p>}
+    </Reveal>
+  )
+}
+
+function FocusQueue({ goals, profileFocus }) {
+  return (
+    <SpotlightSurface className="db-support-panel db-focus-panel">
+      <SectionHeading eyebrow="Current focus" title="Focus queue" action={<Link to="/goals" className="db-text-link">All goals <Icon name="arrow" size={15} /></Link>} />
+      {profileFocus ? <p className="db-profile-focus">{profileFocus}</p> : null}
+      <div className="db-focus-list">
+        {goals?.length ? goals.map((goal, index) => (
+          <Link to={`/goals?goal=${goal.id}`} key={goal.id} className="db-focus-item">
+            <span className="db-focus-index">{String(index + 1).padStart(2, '0')}</span>
+            <span className="db-focus-copy">
+              <strong>{goal.title}</strong>
+              <span>{goal.category}</span>
+            </span>
+            <span className="db-focus-state">
+              <small>{GOAL_STATUS[goal.status] || goal.status}</small>
+              {goal.targetCompletion ? <time dateTime={goal.targetCompletion}>{formatDate(goal.targetCompletion)}</time> : null}
+            </span>
+          </Link>
+        )) : <p className="db-empty-copy">Your active goals will appear here.</p>}
+      </div>
+    </SpotlightSurface>
+  )
+}
+
+function RecentWins({ wins }) {
+  const icons = { project: '↗', goal: '✓', credential: '◆' }
+  return (
+    <SpotlightSurface className="db-support-panel db-wins-panel">
+      <SectionHeading eyebrow="Momentum" title="Recent wins" />
+      <div className="db-wins-list">
+        {wins?.length ? wins.map((win, index) => (
+          <motion.div key={win.id} initial={{ opacity: 0, x: -8 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: index * 0.05 }}>
+            <Link to={win.href} className="db-win-item">
+              <span className={`db-win-icon db-win-icon--${win.type}`}>{icons[win.type] || '·'}</span>
+              <span><strong>{win.title}</strong>{win.date ? <time dateTime={win.date}>{formatDate(win.date)}</time> : null}</span>
+              <Icon name="arrow" size={15} />
+            </Link>
+          </motion.div>
+        )) : <p className="db-empty-copy">Complete a project, goal, or credential to record your next win.</p>}
+      </div>
+    </SpotlightSurface>
+  )
+}
+
+function CredentialSpotlight({ spotlight }) {
+  const rows = [
+    spotlight?.earned && { label: 'Latest earned', item: spotlight.earned, className: 'earned', date: spotlight.earned.issueDate ? formatDate(spotlight.earned.issueDate, { month: 'short', year: 'numeric' }) : spotlight.earned.year },
+    spotlight?.learning && { label: 'Currently learning', item: spotlight.learning, className: 'learning', date: 'In progress' },
+    spotlight?.planned && { label: 'Up next', item: spotlight.planned, className: 'planned', date: `Planned · ${spotlight.planned.year}` },
+  ].filter(Boolean)
+  return (
+    <SpotlightSurface className="db-support-panel db-credentials-panel">
+      <SectionHeading eyebrow="Credentials" title="Credential spotlight" action={<Link to="/certifications" className="db-text-link">View all <Icon name="arrow" size={15} /></Link>} />
+      <div className="db-credential-list">
+        {rows.length ? rows.map(({ label, item, className, date }) => (
+          <Link to="/certifications" key={`${className}-${item.id}`} className={`db-credential-item db-credential-item--${className}`}>
+            <span className="db-credential-mark">{item.logo || (className === 'earned' ? '✓' : className === 'learning' ? '◌' : '◇')}</span>
+            <span className="db-credential-copy"><small>{label}</small><strong>{item.name}</strong><span>{item.provider || item.organization} · {date}</span></span>
+          </Link>
+        )) : <p className="db-empty-copy">Add credentials to create your spotlight.</p>}
+      </div>
+    </SpotlightSurface>
+  )
+}
+
+function QuickAccess({ profile }) {
+  const reduceMotion = useReducedMotion()
+  const { isGuestMode } = useGuestMode()
+  const links = [
+    { label: 'Projects', detail: 'Build portfolio', to: '/projects', icon: '↗' },
+    { label: 'Skills', detail: 'Technology map', to: '/skills', icon: '⌘' },
+    { label: 'Certifications', detail: 'Credentials', to: '/certifications', icon: '◆' },
+    { label: 'Goals', detail: 'Mission control', to: '/goals', icon: '◎' },
+    { label: 'Resume', detail: 'Career document', to: '/resume-workspace', icon: '▤' },
+    { label: 'Profile', detail: 'Identity source', to: '/profile', icon: '◉' },
+    { label: 'Public Portfolio', detail: 'Recruiter view', to: profile?.username && profile?.portfolioEnabled ? `/portfolio/${profile.username}` : '/profile', icon: '◇' },
+    { label: 'Repositories', detail: profile?.githubUrl ? 'Project-only GitHub sync' : 'Connect GitHub', to: '/projects#github-sync', icon: '↻' },
+  ].filter((item) => !isGuestMode || !['Goals', 'Profile', 'Repositories'].includes(item.label))
+  return (
+    <Reveal className="db-quick-access">
+      <SectionHeading eyebrow="Navigate" title="Quick access" />
+      <div className="db-quick-grid">
+        {links.map((item, index) => (
+          <motion.div key={item.label} initial={{ opacity: 0, y: reduceMotion ? 0 : 6 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: reduceMotion ? 0 : index * 0.025, duration: 0.24 }}>
+            <Link to={item.to} className="db-quick-link">
+              <span>{item.icon}</span>
+              <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+              <Icon name="arrow" size={14} />
+            </Link>
+          </motion.div>
+        ))}
+      </div>
+    </Reveal>
+  )
+}
+
+function DashboardPageContent({ getToken, user }) {
+  const { isGuestMode, portfolio } = useGuestMode()
+  const guestDashboard = useMemo(() => {
+    if (!isGuestMode) return null
+    const projects = portfolio.projects || []
+    const skills = portfolio.skills || []
+    const goals = portfolio.goals || []
+    const certifications = portfolio.certifications || []
+    const currentProject = projects.find((project) => project.featured) || projects.find((project) => project.status === 'BUILDING') || projects[0] || null
+    const earned = certifications.filter((item) => item.status === 'earned').sort((left, right) => String(right.issueDate || right.year || '').localeCompare(String(left.issueDate || left.year || '')))[0]
+    const learning = certifications.find((item) => item.status === 'in-progress')
+    const planned = certifications.find((item) => item.status === 'planned')
+    return {
+      workspace: { profile: portfolio.profile, projects, skills, goals, certifications, resume: portfolio.resume },
+      commandDeck: {
+        currentProject,
+        nextMilestone: goals.find((goal) => goal.status === 'current' || goal.status === 'future') || null,
+        focusGoals: goals.filter((goal) => goal.status === 'current' || goal.status === 'future').slice(0, 3),
+        credentialSpotlight: { earned, learning, planned },
+        technologyBench: [...skills].sort((left, right) => Number(right.projectsBuilt || 0) - Number(left.projectsBuilt || 0)).slice(0, 8),
+        recentWins: [
+          ...projects.filter((project) => project.status === 'COMPLETED').slice(0, 2).map((project) => ({ id: `project-${project.id}`, type: 'project', title: `Completed ${project.title}`, href: '/projects', date: null })),
+          ...certifications.filter((item) => item.status === 'earned').slice(0, 2).map((item) => ({ id: `credential-${item.id}`, type: 'credential', title: `Earned ${item.name}`, href: '/certifications', date: item.issueDate })),
+        ].slice(0, 3),
+        evidence: {
+          projects: projects.length,
+          technologies: skills.length,
+          credentials: certifications.filter((item) => item.status === 'earned').length,
+          activeGoals: goals.filter((goal) => goal.status === 'current').length,
+          githubRepositories: projects.filter((project) => project.githubUrl).length,
+          hasResume: Boolean(portfolio.resume?.uploaded),
+        },
+      },
+    }
+  }, [isGuestMode, portfolio])
+  const [dashboard, setDashboard] = useState(() => guestDashboard)
+  const [loading, setLoading] = useState(!isGuestMode)
+  const [loadError, setLoadError] = useState('')
+  const [highlightedTechnology, setHighlightedTechnology] = useState('')
+
+  const refresh = useCallback(async () => {
+    if (isGuestMode) return
+    try {
+      const payload = await authenticatedRequest('/api/dashboard', {}, getToken)
+      setDashboard(payload || null)
+      setLoadError('')
+    } catch (error) {
+      setLoadError(error.message || 'Unable to load your command deck.')
+    } finally {
+      setLoading(false)
+    }
+  }, [getToken, isGuestMode])
+
+  useEffect(() => {
+    if (isGuestMode) return undefined
+    const timeoutId = window.setTimeout(() => refresh().catch(() => {}), 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [isGuestMode, refresh])
+
+  useEffect(() => {
+    if (isGuestMode) return undefined
+    const intervalId = window.setInterval(() => refresh().catch(() => {}), 180_000)
+    return () => window.clearInterval(intervalId)
+  }, [isGuestMode, refresh])
+
+  const profile = dashboard?.workspace?.profile || null
+  const commandDeck = dashboard?.commandDeck || null
+  const email = isGuestMode ? '' : user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || ''
+
+  return (
+    <div className="page-shell page-shell--wide db-page">
+      <div className="db-ambient-bloom" aria-hidden="true" />
+
+      {loading && !dashboard ? (
+        <div className="db-loading" role="status" aria-live="polite">
+          <span className="db-loading-line db-loading-line--wide" />
+          <span className="db-loading-line" />
+          <span className="sr-only">Loading developer workspace</span>
+        </div>
+      ) : null}
+      {loadError ? (
+        <div className="db-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" onClick={refresh}>Try again</button>
+        </div>
+      ) : null}
+
+      {dashboard ? (
+        <>
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.48 }} className="db-hero-grid">
+            <IdentityHero profile={profile} email={email} commandDeck={commandDeck} />
+            <StatusRail profile={profile} commandDeck={commandDeck} />
+          </motion.div>
+
+          <CurrentBuild project={commandDeck?.currentProject} highlightedTechnology={highlightedTechnology} />
+          <EvidenceStrip evidence={commandDeck?.evidence} currentProject={commandDeck?.currentProject} />
+          <TechnologyBench skills={commandDeck?.technologyBench || []} onHover={setHighlightedTechnology} />
+
+          <Reveal className="db-support-grid">
+            <FocusQueue goals={commandDeck?.focusGoals || []} profileFocus={profile?.currentFocus} />
+            <RecentWins wins={commandDeck?.recentWins || []} />
+            <CredentialSpotlight spotlight={commandDeck?.credentialSpotlight || {}} />
+          </Reveal>
+
+          <QuickAccess profile={profile} />
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+function AuthenticatedDashboardPage() {
+  const { getToken } = useAuth()
+  const { user } = useUser()
+  return <DashboardPageContent getToken={getToken} user={user} />
+}
+
+export function DashboardPage() {
+  const { isGuestMode } = useGuestMode()
+  return isGuestMode ? <DashboardPageContent getToken={async () => ''} user={null} /> : <AuthenticatedDashboardPage />
+}

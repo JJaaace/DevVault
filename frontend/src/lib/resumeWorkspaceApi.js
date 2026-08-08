@@ -1,6 +1,7 @@
 import { authenticatedRequest } from './api'
 
-const RESUME_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'
+const RESUME_API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+  || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001')
 
 function createResumeError(message, status, code) {
   const error = new Error(message)

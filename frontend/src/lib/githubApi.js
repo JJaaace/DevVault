@@ -89,7 +89,7 @@ export function buildGitHubProfileDraft(profile, githubUser) {
     firstName: profile?.firstName || nameParts[0] || profile?.username || githubUser?.login || '',
     lastName: profile?.lastName || nameParts.slice(1).join(' ') || '',
     bio: githubUser?.bio || profile?.bio || '',
-    profileImageUrl: githubUser?.avatar_url || profile?.profileImageUrl || profile?.profileImage || '',
+    profileImageUrl: profile?.profileImageUrl || profile?.profileImage || githubUser?.avatar_url || '',
     location: githubUser?.location || profile?.location || '',
     websiteUrl: githubUser?.blog || profile?.websiteUrl || '',
     githubUrl,

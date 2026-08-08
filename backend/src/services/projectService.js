@@ -1,17 +1,23 @@
-let prisma = null
-
-try {
-  const { PrismaClient } = require('@prisma/client')
-  const { PrismaPg } = require('@prisma/adapter-pg')
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
-  prisma = new PrismaClient({ adapter })
-} catch (error) {
-  prisma = null
-}
-
+const { prisma } = require('../db/prisma')
+const { isPostgresMode } = require('../config/persistence')
 const { getLocalStore, updateLocalStore } = require('./localStore')
 
 const PROJECT_STATUSES = ['PLANNING', 'BUILDING', 'COMPLETED', 'ARCHIVED']
+const ARTWORK_SOURCES = ['NONE', 'GITHUB', 'CATALOG', 'IMPORTED', 'CURATED']
+const GITHUB_PROJECT_METADATA_FIELDS = Object.freeze([
+  'githubRepoId',
+  'githubFullName',
+  'githubDescription',
+  'githubStars',
+  'githubForks',
+  'githubLanguages',
+  'githubTopics',
+  'githubUrl',
+  'githubHomepage',
+  'githubUpdatedAt',
+  'githubPushedAt',
+  'githubArchivedAt',
+])
 
 function createServiceError(statusCode, message, details) {
   const error = new Error(message)
@@ -141,6 +147,10 @@ function validateProjectPayload(payload, options = {}) {
     errors.status = 'Status must be one of Planning, Building, Completed, or Archived.'
   }
 
+  if (payload.bannerImageSource !== undefined && !ARTWORK_SOURCES.includes(payload.bannerImageSource)) {
+    errors.bannerImageSource = 'Artwork source is invalid.'
+  }
+
   validateUrl(payload.githubUrl, 'githubUrl', errors)
   validateUrl(payload.liveDemoUrl, 'liveDemoUrl', errors)
   validateImageReference(payload.image || payload.bannerImageUrl || payload.bannerImage, 'bannerImageUrl', errors)
@@ -161,7 +171,9 @@ function validateProjectPayload(payload, options = {}) {
   return errors
 }
 
-function buildProjectPayload(payload, clerkUserId) {
+function buildProjectPayload(payload, clerkUserId, options = {}) {
+  const hasBannerInput = payload.image !== undefined || payload.bannerImageUrl !== undefined || payload.bannerImage !== undefined
+  const bannerImageUrl = normalizeText(payload.image || payload.bannerImageUrl || payload.bannerImage)
   return {
     ownerClerkUserId: clerkUserId,
     displayOrder: payload.displayOrder === undefined || payload.displayOrder === null || payload.displayOrder === ''
@@ -182,7 +194,10 @@ function buildProjectPayload(payload, clerkUserId) {
     githubPushedAt: normalizeDate(payload.githubPushedAt),
     githubArchivedAt: normalizeDate(payload.githubArchivedAt),
     liveDemoUrl: normalizeHttpUrl(payload.liveDemoUrl),
-    bannerImageUrl: normalizeText(payload.image || payload.bannerImageUrl || payload.bannerImage),
+    bannerImageUrl,
+    bannerImageSource: bannerImageUrl
+      ? (payload.bannerImageSource || (hasBannerInput && options.userInitiated ? 'CURATED' : 'GITHUB'))
+      : 'NONE',
     accentTone: normalizeText(payload.accentTone),
     techStack: normalizeList(payload.techStack),
     keyFeatures: normalizeList(payload.keyFeatures),
@@ -191,6 +206,8 @@ function buildProjectPayload(payload, clerkUserId) {
     targetCompletion: normalizeDate(payload.targetCompletion),
     challenges: normalizeText(payload.challenges),
     lessonsLearned: normalizeText(payload.lessonsLearned),
+    publicVisible: payload.publicVisible === undefined ? true : Boolean(payload.publicVisible),
+    featured: Boolean(payload.featured),
   }
 }
 
@@ -208,61 +225,31 @@ function ensureProjectOwnership(project, clerkUserId) {
   return project
 }
 
-function hasPrismaProjectAccess() {
-  const userModel = prisma?.user
-  const projectModel = prisma?.project
-
-  return Boolean(
-    userModel
-    && projectModel
-    && typeof userModel.upsert === 'function'
-    && typeof projectModel.findMany === 'function'
-    && typeof projectModel.findFirst === 'function'
-    && typeof projectModel.create === 'function'
-    && typeof projectModel.update === 'function'
-    && typeof projectModel.delete === 'function',
-  )
-}
-
 async function ensureOwnerUser(clerkUserId) {
-  if (!hasPrismaProjectAccess()) {
+  if (!isPostgresMode()) {
     return
   }
-
-  const userModel = prisma?.user
-  if (!userModel || typeof userModel.upsert !== 'function') {
-    return
-  }
-
-  try {
-    await userModel.upsert({
-      where: { clerkUserId },
-      create: { clerkUserId },
-      update: {},
-    })
-  } catch (error) {
-    throw createServiceError(503, 'Unable to initialize project owner user.')
-  }
+  await prisma.user.upsert({
+    where: { clerkUserId },
+    create: { clerkUserId },
+    update: {},
+  })
 }
 
-async function listProjects(clerkUserId) {
-  if (hasPrismaProjectAccess()) {
-    try {
-      await ensureOwnerUser(clerkUserId)
-      return await prisma.project.findMany({
-        where: { ownerClerkUserId: clerkUserId },
-        orderBy: [
-          { displayOrder: 'asc' },
-          { updatedAt: 'desc' },
-        ],
-      })
-    } catch {
-      // fall through to local storage when Prisma is unavailable
-    }
+async function listProjects(clerkUserId, { publicOnly = false } = {}) {
+  if (isPostgresMode()) {
+    await ensureOwnerUser(clerkUserId)
+    return prisma.project.findMany({
+      where: { ownerClerkUserId: clerkUserId, ...(publicOnly ? { publicVisible: true } : {}) },
+      orderBy: [
+        { displayOrder: 'asc' },
+        { updatedAt: 'desc' },
+      ],
+    })
   }
 
   return getLocalStore().projects
-    .filter((project) => project.ownerClerkUserId === clerkUserId)
+    .filter((project) => project.ownerClerkUserId === clerkUserId && (!publicOnly || project.publicVisible))
     .sort((left, right) => {
       const leftOrder = Number.isInteger(left.displayOrder) ? left.displayOrder : Number.MAX_SAFE_INTEGER
       const rightOrder = Number.isInteger(right.displayOrder) ? right.displayOrder : Number.MAX_SAFE_INTEGER
@@ -281,25 +268,17 @@ async function getProjectById(clerkUserId, projectId) {
     throw createServiceError(400, 'Project ID must be a valid number.')
   }
 
-  if (hasPrismaProjectAccess()) {
-    try {
-      await ensureOwnerUser(clerkUserId)
-      const project = await prisma.project.findFirst({
-        where: { id, ownerClerkUserId: clerkUserId },
-      })
+  if (isPostgresMode()) {
+    await ensureOwnerUser(clerkUserId)
+    const project = await prisma.project.findFirst({
+      where: { id, ownerClerkUserId: clerkUserId },
+    })
 
-      if (!project) {
-        throw createServiceError(404, 'Project not found.')
-      }
-
-      return project
-    } catch (error) {
-      if (error?.statusCode === 404) {
-        throw error
-      }
-
-      // fall through to local storage when Prisma is unavailable
+    if (!project) {
+      throw createServiceError(404, 'Project not found.')
     }
+
+    return project
   }
 
   return ensureProjectOwnership(findMemoryProject(id, clerkUserId), clerkUserId)
@@ -311,28 +290,27 @@ async function createProject(clerkUserId, payload) {
     throw createServiceError(400, 'Invalid project data.', errors)
   }
 
-  const data = buildProjectPayload(payload, clerkUserId)
+  const data = buildProjectPayload(payload, clerkUserId, { userInitiated: true })
 
-  if (hasPrismaProjectAccess()) {
-    try {
-      await ensureOwnerUser(clerkUserId)
+  if (isPostgresMode()) {
+    await ensureOwnerUser(clerkUserId)
 
-      if (data.displayOrder === null) {
-        const highestOrder = await prisma.project.findFirst({
-          where: { ownerClerkUserId: clerkUserId },
-          orderBy: { displayOrder: 'desc' },
-          select: { displayOrder: true },
-        })
-
-        data.displayOrder = Number(highestOrder?.displayOrder || 0) + 1
-      }
-
-      return await prisma.project.create({
-        data,
+    if (data.displayOrder === null) {
+      const highestOrder = await prisma.project.findFirst({
+        where: { ownerClerkUserId: clerkUserId },
+        orderBy: { displayOrder: 'desc' },
+        select: { displayOrder: true },
       })
-    } catch {
-      // fall through to local storage when Prisma is unavailable
+
+      data.displayOrder = Number(highestOrder?.displayOrder || 0) + 1
     }
+
+    return prisma.$transaction(async (transaction) => {
+      if (data.featured) {
+        await transaction.project.updateMany({ where: { ownerClerkUserId: clerkUserId, featured: true }, data: { featured: false } })
+      }
+      return transaction.project.create({ data })
+    })
   }
 
   const store = getLocalStore()
@@ -364,37 +342,34 @@ async function updateProject(clerkUserId, projectId, payload) {
     throw createServiceError(400, 'Invalid project data.', errors)
   }
 
-  if (hasPrismaProjectAccess()) {
-    try {
-      await ensureOwnerUser(clerkUserId)
-      const existing = await prisma.project.findFirst({
-        where: { id, ownerClerkUserId: clerkUserId },
-      })
+  if (isPostgresMode()) {
+    await ensureOwnerUser(clerkUserId)
+    const existing = await prisma.project.findFirst({
+      where: { id, ownerClerkUserId: clerkUserId },
+    })
 
-      if (!existing) {
-        throw createServiceError(404, 'Project not found.')
+    if (!existing) {
+      throw createServiceError(404, 'Project not found.')
+    }
+
+    const mergedPayload = { ...existing, ...payload }
+    const data = buildProjectPayload(mergedPayload, clerkUserId, { userInitiated: true })
+
+    return prisma.$transaction(async (transaction) => {
+      if (data.featured && !existing.featured) {
+        await transaction.project.updateMany({ where: { ownerClerkUserId: clerkUserId, featured: true }, data: { featured: false } })
       }
-
-      const mergedPayload = {
-        ...existing,
-        ...payload,
-      }
-      const data = buildProjectPayload(mergedPayload, clerkUserId)
-
-      return await prisma.project.update({
+      return transaction.project.update({
         where: { id: existing.id },
         data: {
           ...data,
+          bannerImageSource: payload.image === undefined && payload.bannerImageUrl === undefined && payload.bannerImage === undefined ? existing.bannerImageSource : data.bannerImageSource,
           displayOrder: payload.displayOrder === undefined ? existing.displayOrder : data.displayOrder,
+          publicVisible: payload.publicVisible === undefined ? existing.publicVisible : data.publicVisible,
+          featured: payload.featured === undefined ? existing.featured : data.featured,
         },
       })
-    } catch (error) {
-      if (error?.statusCode === 404) {
-        throw error
-      }
-
-      // fall through to local storage when Prisma is unavailable
-    }
+    })
   }
 
   const existing = ensureProjectOwnership(findMemoryProject(id, clerkUserId), clerkUserId)
@@ -402,12 +377,15 @@ async function updateProject(clerkUserId, projectId, payload) {
     ...existing,
     ...payload,
   }
-  const data = buildProjectPayload(mergedPayload, clerkUserId)
+  const data = buildProjectPayload(mergedPayload, clerkUserId, { userInitiated: true })
 
   const updatedProject = {
     ...existing,
     ...data,
     displayOrder: payload.displayOrder === undefined ? existing.displayOrder : data.displayOrder,
+    bannerImageSource: payload.image === undefined && payload.bannerImageUrl === undefined && payload.bannerImage === undefined ? existing.bannerImageSource : data.bannerImageSource,
+    publicVisible: payload.publicVisible === undefined ? existing.publicVisible : data.publicVisible,
+    featured: payload.featured === undefined ? existing.featured : data.featured,
     updatedAt: new Date(),
   }
 
@@ -418,35 +396,80 @@ async function updateProject(clerkUserId, projectId, payload) {
   return updatedProject
 }
 
+function normalizeGitHubMetadata(payload) {
+  const data = {}
+  const assign = (field, value) => {
+    if (value !== undefined) data[field] = value
+  }
+
+  if (payload.githubRepoId !== undefined) assign('githubRepoId', payload.githubRepoId === null ? null : normalizeInteger(payload.githubRepoId))
+  if (payload.githubFullName !== undefined) assign('githubFullName', payload.githubFullName === null ? null : normalizeText(payload.githubFullName))
+  if (payload.githubDescription !== undefined) assign('githubDescription', payload.githubDescription === null ? null : normalizeText(payload.githubDescription))
+  if (payload.githubStars !== undefined) assign('githubStars', payload.githubStars === null ? null : normalizeInteger(payload.githubStars))
+  if (payload.githubForks !== undefined) assign('githubForks', payload.githubForks === null ? null : normalizeInteger(payload.githubForks))
+  if (payload.githubLanguages !== undefined) assign('githubLanguages', normalizeList(payload.githubLanguages))
+  if (payload.githubTopics !== undefined) assign('githubTopics', normalizeList(payload.githubTopics))
+  if (payload.githubUrl !== undefined) assign('githubUrl', payload.githubUrl === null ? null : normalizeHttpUrl(payload.githubUrl))
+  if (payload.githubHomepage !== undefined) assign('githubHomepage', payload.githubHomepage === null ? null : normalizeHttpUrl(payload.githubHomepage))
+  if (payload.githubUpdatedAt !== undefined) assign('githubUpdatedAt', payload.githubUpdatedAt === null ? null : normalizeDate(payload.githubUpdatedAt))
+  if (payload.githubPushedAt !== undefined) assign('githubPushedAt', payload.githubPushedAt === null ? null : normalizeDate(payload.githubPushedAt))
+  if (payload.githubArchivedAt !== undefined) assign('githubArchivedAt', payload.githubArchivedAt === null ? null : normalizeDate(payload.githubArchivedAt))
+
+  return Object.fromEntries(
+    Object.entries(data).filter(([field]) => GITHUB_PROJECT_METADATA_FIELDS.includes(field)),
+  )
+}
+
+async function updateGitHubProjectMetadata(clerkUserId, projectId, payload) {
+  const id = Number(projectId)
+  if (!Number.isInteger(id) || id <= 0) {
+    throw createServiceError(400, 'Project ID must be a valid number.')
+  }
+
+  const data = normalizeGitHubMetadata(payload)
+  if (!Object.keys(data).length) {
+    return getProjectById(clerkUserId, id)
+  }
+
+  if (isPostgresMode()) {
+    await ensureOwnerUser(clerkUserId)
+    const existing = await prisma.project.findFirst({
+      where: { id, ownerClerkUserId: clerkUserId },
+      select: { id: true },
+    })
+    if (!existing) throw createServiceError(404, 'Project not found.')
+    return prisma.project.update({ where: { id }, data })
+  }
+
+  const existing = ensureProjectOwnership(findMemoryProject(id, clerkUserId), clerkUserId)
+  const updatedProject = { ...existing, ...data, updatedAt: new Date() }
+  updateLocalStore((current) => ({
+    ...current,
+    projects: current.projects.map((project) => (
+      project.id === id && project.ownerClerkUserId === clerkUserId ? updatedProject : project
+    )),
+  }))
+  return updatedProject
+}
+
 async function deleteProject(clerkUserId, projectId) {
   const id = Number(projectId)
   if (!Number.isInteger(id) || id <= 0) {
     throw createServiceError(400, 'Project ID must be a valid number.')
   }
 
-  if (hasPrismaProjectAccess()) {
-    try {
-      await ensureOwnerUser(clerkUserId)
-      const existing = await prisma.project.findFirst({
-        where: { id, ownerClerkUserId: clerkUserId },
-      })
+  if (isPostgresMode()) {
+    await ensureOwnerUser(clerkUserId)
+    const existing = await prisma.project.findFirst({
+      where: { id, ownerClerkUserId: clerkUserId },
+    })
 
-      if (!existing) {
-        throw createServiceError(404, 'Project not found.')
-      }
-
-      await prisma.project.delete({
-        where: { id: existing.id },
-      })
-
-      return null
-    } catch (error) {
-      if (error?.statusCode === 404) {
-        throw error
-      }
-
-      // fall through to local storage when Prisma is unavailable
+    if (!existing) {
+      throw createServiceError(404, 'Project not found.')
     }
+
+    await prisma.project.delete({ where: { id: existing.id } })
+    return null
   }
 
   ensureProjectOwnership(findMemoryProject(id, clerkUserId), clerkUserId)
@@ -459,10 +482,13 @@ async function deleteProject(clerkUserId, projectId) {
 
 module.exports = {
   PROJECT_STATUSES,
+  GITHUB_PROJECT_METADATA_FIELDS,
   createServiceError,
   listProjects,
   getProjectById,
   createProject,
   updateProject,
+  updateGitHubProjectMetadata,
   deleteProject,
+  __test: { normalizeGitHubMetadata },
 }

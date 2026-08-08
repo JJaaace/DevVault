@@ -8,8 +8,14 @@ const defaultStore = {
   profiles: [],
   projects: [],
   skills: [],
+  goals: [],
+  certifications: [],
+  certificationRoadmap: [],
   nextProjectId: 1,
   nextSkillId: 1,
+  nextGoalId: 1,
+  nextCertificationId: 1,
+  nextCertificationRoadmapId: 1,
 }
 
 function normalizeLegacyProjectStatus(project) {
@@ -47,42 +53,20 @@ function migrateLegacyProjects(projects) {
   })
 }
 
-function inferLevelFromPercentage(percentage) {
-  if (!Number.isFinite(percentage)) {
-    return 'BEGINNER'
-  }
-
-  if (percentage >= 85) {
-    return 'ADVANCED'
-  }
-
-  if (percentage >= 70) {
-    return 'INTERMEDIATE'
-  }
-
-  if (percentage >= 45) {
-    return 'ADVANCED_BEGINNER'
-  }
-
-  return 'BEGINNER'
-}
-
 function migrateLegacySkills(skills) {
   const currentYear = new Date().getFullYear()
 
   return skills.map((skill) => {
-    const legacyPercent = Number(skill?.percentage)
-    const safeYears = Number.isInteger(skill?.yearsExperience)
-      ? skill.yearsExperience
-      : (Number.isFinite(legacyPercent) ? Math.max(0, Math.round(legacyPercent / 20)) : 0)
+    const { percentage: ignored, ...skillWithoutPercentage } = skill || {}
+    const safeYears = Number.isInteger(skill?.yearsExperience) ? skill.yearsExperience : 0
     const firstUsedYear = Number.isInteger(skill?.firstUsedYear)
       ? skill.firstUsedYear
       : (safeYears > 0 ? currentYear - safeYears : currentYear)
 
     return {
-      ...skill,
+      ...skillWithoutPercentage,
       technologyKey: typeof skill?.technologyKey === 'string' ? skill.technologyKey : String(skill?.name || '').trim().toLowerCase().replace(/\s+/g, '-'),
-      experienceLevel: skill?.experienceLevel || inferLevelFromPercentage(legacyPercent),
+      experienceLevel: skill?.experienceLevel || 'BEGINNER',
       yearsExperience: safeYears,
       firstUsedYear,
       projectsBuilt: Number.isInteger(skill?.projectsBuilt) ? skill.projectsBuilt : 0,
@@ -109,6 +93,9 @@ function readStoreFromDisk() {
       profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
       projects: Array.isArray(parsed.projects) ? migrateLegacyProjects(parsed.projects) : [],
       skills: Array.isArray(parsed.skills) ? migrateLegacySkills(parsed.skills) : [],
+      goals: Array.isArray(parsed.goals) ? parsed.goals : [],
+      certifications: Array.isArray(parsed.certifications) ? parsed.certifications : [],
+      certificationRoadmap: Array.isArray(parsed.certificationRoadmap) ? parsed.certificationRoadmap : [],
     }
   } catch {
     return { ...defaultStore }
@@ -130,6 +117,9 @@ function saveLocalStore(nextStore) {
     profiles: Array.isArray(nextStore.profiles) ? nextStore.profiles : [],
     projects: Array.isArray(nextStore.projects) ? nextStore.projects : [],
     skills: Array.isArray(nextStore.skills) ? nextStore.skills : [],
+    goals: Array.isArray(nextStore.goals) ? nextStore.goals : [],
+    certifications: Array.isArray(nextStore.certifications) ? nextStore.certifications : [],
+    certificationRoadmap: Array.isArray(nextStore.certificationRoadmap) ? nextStore.certificationRoadmap : [],
   }
 
   ensureStoreDir()
@@ -144,6 +134,9 @@ function updateLocalStore(updater) {
     profiles: [...current.profiles],
     projects: [...current.projects],
     skills: [...current.skills],
+    goals: [...current.goals],
+    certifications: [...current.certifications],
+    certificationRoadmap: [...current.certificationRoadmap],
   })
 
   return saveLocalStore(next)

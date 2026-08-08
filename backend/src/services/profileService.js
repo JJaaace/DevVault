@@ -1,8 +1,7 @@
-const { PrismaClient } = require('@prisma/client')
-
-const prisma = new PrismaClient()
+const { getPrisma } = require('../db/prisma')
 
 async function findProfileByClerkId(clerkUserId) {
+  const prisma = getPrisma()
   return prisma.profile.findUnique({
     where: { clerkUserId },
   })

@@ -7,6 +7,8 @@
     "dev:backend": "PORT=5001 npm --prefix backend run dev",
     "dev:frontend": "VITE_API_BASE_URL=http://localhost:5001 npm --prefix frontend run dev -- --host 127.0.0.1 --port 5176",
     "build": "npm --prefix frontend run build",
-    "lint": "npm --prefix frontend run lint"
+    "lint": "npm --prefix frontend run lint",
+    "test": "npm --prefix backend test && npm --prefix frontend test",
+    "verify:data": "node backend/scripts/verifyWorkspaceIntegrity.js"
   }
 }

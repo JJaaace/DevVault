@@ -7,103 +7,114 @@ datasource db {
 }
 
 model User {
-  id          Int       @id @default(autoincrement())
-  clerkUserId String    @unique
-  projects    Project[]
-  skills      Skill[]
+  id                   Int                        @id @default(autoincrement())
+  clerkUserId          String                     @unique
+  projects             Project[]
+  skills               Skill[]
+  goals                Goal[]
+  certifications       Certification[]
+  certificationRoadmap CertificationRoadmapItem[]
+  resumeAsset          ResumeAsset?
 }
 
 model Profile {
-  id                Int      @id @default(autoincrement())
-  clerkUserId       String   @unique
-  username          String   @unique
-  firstName         String
-  lastName          String
-  bio               String
-  profileImageUrl   String?
-  school            String?
-  graduationYear    Int?
-  major             String?
-  location          String?
-  dreamCompanies    String[] @default([])
-  currentRole       String?
-  favoriteLanguage  String?
-  favoriteFramework String?
-  yearsCoding       Int?
-  interests         String[] @default([])
-  tagline           String?
-  pronouns          String?
-  openToWork        Boolean  @default(false)
-  jobType           String?
-  githubUrl         String?
-  linkedinUrl       String?
-  websiteUrl        String?
-  twitterUrl        String?
+  id                 Int       @id @default(autoincrement())
+  clerkUserId        String    @unique
+  username           String    @unique
+  firstName          String
+  lastName           String
+  bio                String
+  profileImageUrl    String?
+  school             String?
+  graduationYear     Int?
+  major              String?
+  location           String?
+  dreamCompanies     String[]  @default([])
+  currentRole        String?
+  favoriteLanguage   String?
+  favoriteFramework  String?
+  yearsCoding        Int?
+  interests          String[]  @default([])
+  tagline            String?
+  pronouns           String?
+  openToWork         Boolean   @default(false)
+  jobType            String?
+  githubUrl          String?
+  linkedinUrl        String?
+  websiteUrl         String?
+  twitterUrl         String?
+  portfolioEnabled   Boolean   @default(true)
+  currentFocus       String?
   githubLastSyncedAt DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
 model Project {
-  id                  Int            @id @default(autoincrement())
-  ownerClerkUserId     String
-  owner                User           @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
-  displayOrder         Int            @default(0)
-  title                String
-  description          String
-  githubUrl            String?
-  githubRepoId         Int?
-  githubFullName       String?
-  githubDescription    String?
-  githubStars          Int?
-  githubForks          Int?
-  githubLanguages      String[]       @default([])
-  githubTopics         String[]       @default([])
-  githubHomepage       String?
-  githubUpdatedAt      DateTime?
-  githubPushedAt       DateTime?
-  githubArchivedAt     DateTime?
-  liveDemoUrl          String?
-  bannerImageUrl       String?
-  accentTone           String?
-  techStack            String[]       @default([])
-  keyFeatures          String[]       @default([])
-  status               ProjectStatus  @default(PLANNING)
-  dateStarted          DateTime?
-  targetCompletion     DateTime?
-  challenges           String?
-  lessonsLearned       String?
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
-  skillProjects        SkillProject[]
+  id                Int                  @id @default(autoincrement())
+  ownerClerkUserId  String
+  owner             User                 @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
+  displayOrder      Int                  @default(0)
+  title             String
+  description       String
+  githubUrl         String?
+  githubRepoId      Int?
+  githubFullName    String?
+  githubDescription String?
+  githubStars       Int?
+  githubForks       Int?
+  githubLanguages   String[]             @default([])
+  githubTopics      String[]             @default([])
+  githubHomepage    String?
+  githubUpdatedAt   DateTime?
+  githubPushedAt    DateTime?
+  githubArchivedAt  DateTime?
+  liveDemoUrl       String?
+  bannerImageUrl    String?
+  bannerImageSource ProjectArtworkSource @default(NONE)
+  accentTone        String?
+  techStack         String[]             @default([])
+  keyFeatures       String[]             @default([])
+  status            ProjectStatus        @default(PLANNING)
+  dateStarted       DateTime?
+  targetCompletion  DateTime?
+  challenges        String?
+  lessonsLearned    String?
+  publicVisible     Boolean              @default(true)
+  featured          Boolean              @default(false)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  skillProjects     SkillProject[]
 
   @@index([ownerClerkUserId])
   @@index([status])
   @@index([updatedAt])
+  @@index([ownerClerkUserId, publicVisible])
 }
 
 model Skill {
-  id                  Int                  @id @default(autoincrement())
-  ownerClerkUserId    String
-  owner               User                 @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
-  name                String
-  technologyKey       String?
-  category            String
-  experienceLevel     SkillExperienceLevel
-  percentage          Int                  @default(0)
-  yearsExperience     Int?
-  firstUsedYear       Int?
-  projectsBuilt       Int?
-  color               String
-  lastUsed            DateTime?
-  notes               String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  relatedProjects     SkillProject[]
+  id               Int                  @id @default(autoincrement())
+  ownerClerkUserId String
+  owner            User                 @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
+  name             String
+  technologyKey    String?
+  category         String
+  experienceLevel  SkillExperienceLevel
+  yearsExperience  Int?
+  firstUsedYear    Int?
+  projectsBuilt    Int?
+  color            String
+  lastUsed         DateTime?
+  notes            String?
+  publicVisible    Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  relatedProjects  SkillProject[]
 
   @@index([ownerClerkUserId])
   @@index([category])
   @@index([updatedAt])
+  @@index([ownerClerkUserId, publicVisible])
 }
 
 model SkillProject {
@@ -114,6 +125,95 @@ model SkillProject {
 
   @@id([skillId, projectId])
   @@index([projectId])
+}
+
+model Goal {
+  id                        Int       @id @default(autoincrement())
+  ownerClerkUserId          String
+  owner                     User      @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
+  legacyKey                 String?
+  title                     String
+  category                  String
+  status                    String
+  displayOrder              Int       @default(0)
+  pinned                    Boolean   @default(false)
+  targetCompletion          DateTime?
+  description               String
+  why                       String?
+  notes                     String?
+  resources                 Json      @default("[]")
+  relatedProjectNames       String[]  @default([])
+  relatedCertificationNames String[]  @default([])
+  relatedTechnologies       String[]  @default([])
+  milestones                Json      @default("[]")
+  accent                    String?
+  publicVisible             Boolean   @default(false)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@unique([ownerClerkUserId, legacyKey])
+  @@index([ownerClerkUserId, displayOrder])
+  @@index([ownerClerkUserId, status])
+}
+
+model Certification {
+  id                 Int       @id @default(autoincrement())
+  ownerClerkUserId   String
+  owner              User      @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
+  legacyKey          String?
+  name               String
+  organization       String
+  provider           String
+  status             String
+  issueDate          DateTime?
+  year               Int
+  credentialId       String?
+  credentialUrl      String?
+  verifyUrl          String?
+  logo               String?
+  accentColor        String?
+  skillsGained       String[]  @default([])
+  technologies       String[]  @default([])
+  associatedProjects String[]  @default([])
+  notes              String?
+  featured           Boolean   @default(false)
+  displayOrder       Int       @default(0)
+  publicVisible      Boolean   @default(true)
+  assetData          Bytes?
+  assetMimeType      String?
+  assetName          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([ownerClerkUserId, legacyKey])
+  @@index([ownerClerkUserId, displayOrder])
+  @@index([ownerClerkUserId, status])
+  @@index([ownerClerkUserId, publicVisible])
+}
+
+model CertificationRoadmapItem {
+  id               Int      @id @default(autoincrement())
+  ownerClerkUserId String
+  owner            User     @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
+  year             Int
+  status           String
+  title            String
+  displayOrder     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([ownerClerkUserId, displayOrder])
+}
+
+model ResumeAsset {
+  ownerClerkUserId String   @id
+  owner            User     @relation(fields: [ownerClerkUserId], references: [clerkUserId], onDelete: Cascade)
+  fileName         String
+  mimeType         String   @default("application/pdf")
+  byteSize         Int
+  content          Bytes
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 enum ProjectStatus {
@@ -129,4 +229,12 @@ enum SkillExperienceLevel {
   INTERMEDIATE
   ADVANCED
   EXPERT
+}
+
+enum ProjectArtworkSource {
+  NONE
+  GITHUB
+  CATALOG
+  IMPORTED
+  CURATED
 }

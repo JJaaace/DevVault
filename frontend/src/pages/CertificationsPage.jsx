@@ -1,13 +1,31 @@
+import { useAuth } from '@clerk/clerk-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { SectionHeader } from '../components/SectionHeader'
+import { toast } from 'sonner'
+import {
+  createCertification,
+  deleteCertification as deleteCertificationRequest,
+  fetchCertificationAsset,
+  fetchCertificationRoadmap,
+  fetchCertifications,
+  importLegacyCertifications,
+  reorderCertifications,
+  setFeaturedCertifications,
+  updateCertification,
+  updateCertificationRoadmap,
+} from '../lib/certificationsApi'
+import { useGuestMode } from '../context/GuestModeContext'
 
 const CERTIFICATIONS_STORAGE_KEY = 'devvault.certifications.collection.v2'
 const CERTIFICATIONS_PINNED_STORAGE_KEY = 'devvault.certifications.pinned.v2'
 const CERTIFICATIONS_ROADMAP_STORAGE_KEY = 'devvault.certifications.roadmap.v2'
+const CERTIFICATIONS_POSTGRES_IMPORT_KEY = 'devvault.certifications.postgres-import.v1'
 
-const INITIAL_CERTIFICATIONS = [
+// Historical one-time migration snapshots. Application state comes only from PostgreSQL APIs.
+// eslint-disable-next-line react-refresh/only-export-components
+export const LEGACY_CERTIFICATIONS_MIGRATION_SNAPSHOT = [
   {
     id: 'github-foundations',
     name: 'GitHub Foundations',
@@ -225,7 +243,8 @@ const INITIAL_CERTIFICATIONS = [
   },
 ]
 
-const INITIAL_ROADMAP = [
+// eslint-disable-next-line react-refresh/only-export-components
+export const LEGACY_CERTIFICATION_ROADMAP_MIGRATION_SNAPSHOT = [
   { year: 2025, status: 'complete', title: 'Microsoft Word 2019 Introductory' },
   { year: 2025, status: 'complete', title: 'Microsoft Excel 2019 Introductory' },
   { year: 2025, status: 'complete', title: 'Microsoft PowerPoint 2019 Introductory' },
@@ -336,17 +355,10 @@ function hydrateCert(cert, index) {
   }
 }
 
-function createInitialCertifications() {
-  return INITIAL_CERTIFICATIONS.map((cert, index) => hydrateCert(cert, index))
-}
-
-// merge any seeded certs not yet present in the persisted list
-function mergeSeededCertifications(persisted) {
-  const existingIds = new Set(persisted.map((cert) => cert.id))
-  const missing = INITIAL_CERTIFICATIONS
-    .filter((cert) => !existingIds.has(cert.id))
-    .map((cert, index) => hydrateCert(cert, persisted.length + index))
-  return [...persisted, ...missing]
+function resolveCertificationPreviewUrl(cert, previewUrls) {
+  if (!cert?.assetUrl) return null
+  if (/^(data:|blob:)/i.test(cert.assetUrl)) return cert.assetUrl
+  return previewUrls[cert.id] || null
 }
 
 function loadPersistedJson(key) {
@@ -363,15 +375,6 @@ function loadPersistedJson(key) {
   } catch {
     return null
   }
-}
-
-function createCertificationId(name) {
-  const slug = String(name || 'certification')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-
-  return `${slug || 'certification'}-${Date.now()}`
 }
 
 function CertReorderModal({ certifications, onSave, onClose }) {
@@ -497,9 +500,10 @@ function StatTile({ icon, label, value, note }) {
   )
 }
 
-function CertificationModal({ cert, onClose }) {
+function CertificationModal({ cert, previewUrl, previewFailed, onClose }) {
   const hasAsset = Boolean(cert?.assetUrl)
   const isPdf = cert?.assetType === 'pdf'
+  const isFile = cert?.assetType === 'file'
 
   return (
     <motion.div
@@ -528,20 +532,32 @@ function CertificationModal({ cert, onClose }) {
 
         <div className="grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="min-h-[34rem] overflow-hidden rounded-[1.4rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(18,13,10,0.92)] p-3">
-            {hasAsset ? (
-              isPdf ? (
+            {hasAsset && previewUrl ? (
+              isFile ? (
+                <div className="grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] px-6 text-center">
+                  <div>
+                    <p className="text-lg font-semibold text-[var(--color-text)]">{cert.assetName || 'Certificate file'}</p>
+                    <p className="mt-2 text-sm text-[var(--color-text-soft)]">This file type cannot be previewed safely in the browser, but it is saved and ready to download.</p>
+                    <a href={previewUrl} download={cert.assetName || 'certificate'} className="button-primary mt-5 inline-flex px-4 py-2 text-sm">Download file</a>
+                  </div>
+                </div>
+              ) : isPdf ? (
                 <iframe
-                  src={cert.assetUrl}
+                  src={previewUrl}
                   title={`${cert.name} PDF preview`}
                   className="h-[32rem] w-full rounded-[1.1rem] bg-black/30"
                 />
               ) : (
                 <img
-                  src={cert.assetUrl}
+                  src={previewUrl}
                   alt={`${cert.name} certificate`}
                   className="h-[32rem] w-full rounded-[1.1rem] object-contain bg-black/30"
                 />
               )
+            ) : hasAsset ? (
+              <div className="grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] text-sm text-[var(--color-text-soft)]">
+                {previewFailed ? 'Preview unavailable. Close this window and use Replace Media to upload the file again.' : 'Loading secure certificate preview…'}
+              </div>
             ) : (
               <div className="grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] text-sm text-[var(--color-text-soft)]">
                 Upload a certificate image or PDF to preview it here.
@@ -607,6 +623,7 @@ function CertificationEditorModal({ cert, onSave, onClose }) {
     skillsGainedText: (cert?.skillsGained || []).join('\n'),
     technologiesText: (cert?.technologies || []).join('\n'),
     associatedProjectsText: (cert?.associatedProjects || []).join('\n'),
+    publicVisible: cert?.publicVisible ?? true,
   }))
 
   return (
@@ -674,6 +691,10 @@ function CertificationEditorModal({ cert, onSave, onClose }) {
             <strong>Notes</strong>
             <textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} rows={3} className="field-textarea" />
           </label>
+          <label className="flex cursor-pointer items-center gap-3 rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3 lg:col-span-2">
+            <input type="checkbox" checked={form.publicVisible} onChange={(event) => setForm((current) => ({ ...current, publicVisible: event.target.checked }))} className="h-4 w-4 accent-[var(--color-brand)]" />
+            <span className="text-sm text-[var(--color-text-soft)]">Visible on public portfolio</span>
+          </label>
           <label className="field-label">
             <strong>Credential URL</strong>
             <input value={form.credentialUrl} onChange={(event) => setForm((current) => ({ ...current, credentialUrl: event.target.value }))} className="field-input" />
@@ -719,6 +740,7 @@ function CertificationEditorModal({ cert, onSave, onClose }) {
                 skillsGained: parseTextList(form.skillsGainedText),
                 technologies: parseTextList(form.technologiesText),
                 associatedProjects: parseTextList(form.associatedProjectsText),
+                publicVisible: form.publicVisible,
               })
             }}
             className="button-primary px-4 py-2 text-sm"
@@ -777,60 +799,116 @@ function RoadmapEditorModal({ value, onSave, onClose }) {
   )
 }
 
-export function CertificationsPage() {
+function CertificationsPageContent({ auth }) {
   const navigate = useNavigate()
-  const [certifications, setCertifications] = useState(() => {
-    const persisted = loadPersistedJson(CERTIFICATIONS_STORAGE_KEY)
-    if (Array.isArray(persisted)) {
-      return mergeSeededCertifications(persisted.map((cert) => hydrateCert(cert)))
-    }
-    return createInitialCertifications()
-  })
+  const { getToken, isLoaded, isSignedIn } = auth
+  const { isGuestMode, portfolio, resolvePath } = useGuestMode()
+  const publicCertifications = isGuestMode ? portfolio.certifications || [] : []
+  const [certifications, setCertifications] = useState(() => publicCertifications.map((item, index) => hydrateCert(item, index)))
+  const [loading, setLoading] = useState(!isGuestMode)
+  const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [yearFilter, setYearFilter] = useState('All')
-  const [pinnedIds, setPinnedIds] = useState(() => {
-    const persisted = loadPersistedJson(CERTIFICATIONS_PINNED_STORAGE_KEY)
-    if (Array.isArray(persisted)) {
-      return persisted
-    }
-    return INITIAL_CERTIFICATIONS.filter((cert) => cert.featured).slice(0, 3).map((cert) => cert.id)
-  })
+  const [pinnedIds, setPinnedIds] = useState(() => publicCertifications.filter((item) => item.featured).slice(0, 3).map((item) => item.id))
   const [selectedCertification, setSelectedCertification] = useState(null)
   const [editingCertification, setEditingCertification] = useState(null)
   const [isCertificationEditorOpen, setIsCertificationEditorOpen] = useState(false)
   const [isReorderOpen, setIsReorderOpen] = useState(false)
   const [isRoadmapEditorOpen, setIsRoadmapEditorOpen] = useState(false)
-  const [roadmapItems, setRoadmapItems] = useState(() => {
-    const persisted = loadPersistedJson(CERTIFICATIONS_ROADMAP_STORAGE_KEY)
-    return Array.isArray(persisted) ? persisted : INITIAL_ROADMAP
-  })
-  const [activeUploadId, setActiveUploadId] = useState(null)
+  const [roadmapItems, setRoadmapItems] = useState(() => publicCertifications.map((item) => ({
+    year: item.year,
+    title: item.name,
+    status: item.status === 'earned' ? 'complete' : item.status === 'in-progress' ? 'current' : 'future',
+  })))
+  const [assetPreviewUrls, setAssetPreviewUrls] = useState(() => Object.fromEntries(publicCertifications.filter((item) => item.assetUrl).map((item) => [item.id, item.assetUrl])))
   const fileInputRef = useRef(null)
+  const activeUploadIdRef = useRef(null)
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
+    if (isGuestMode) return
+    if (!isLoaded || !isSignedIn) return
+    let cancelled = false
+
+    async function loadWorkspaceCertifications() {
+      const legacyCertifications = loadPersistedJson(CERTIFICATIONS_STORAGE_KEY)
+      const legacyPinned = loadPersistedJson(CERTIFICATIONS_PINNED_STORAGE_KEY)
+      const legacyRoadmap = loadPersistedJson(CERTIFICATIONS_ROADMAP_STORAGE_KEY)
+      const needsImport = typeof window !== 'undefined'
+        && window.localStorage.getItem(CERTIFICATIONS_POSTGRES_IMPORT_KEY) !== 'complete'
+        && Array.isArray(legacyCertifications)
+        && legacyCertifications.length > 0
+
+      const result = needsImport
+        ? await importLegacyCertifications({
+          certifications: legacyCertifications.map((certification) => ({
+            ...certification,
+            featured: Array.isArray(legacyPinned) ? legacyPinned.includes(certification.id) : Boolean(certification.featured),
+          })),
+          roadmap: Array.isArray(legacyRoadmap) ? legacyRoadmap : undefined,
+        }, getToken)
+        : {
+          certifications: await fetchCertifications(getToken),
+          roadmap: await fetchCertificationRoadmap(getToken),
+        }
+
+      if (cancelled) return
+      const nextCertifications = (result.certifications || []).map((item) => hydrateCert(item))
+      setCertifications(nextCertifications)
+      setPinnedIds(nextCertifications.filter((item) => item.featured).slice(0, 3).map((item) => item.id))
+      setRoadmapItems(result.roadmap || [])
+      setLoadError('')
+      if (needsImport) window.localStorage.setItem(CERTIFICATIONS_POSTGRES_IMPORT_KEY, 'complete')
     }
 
+    loadWorkspaceCertifications()
+      .catch((error) => setLoadError(error.message || 'Unable to load certifications.'))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [getToken, isGuestMode, isLoaded, isSignedIn])
+
+  useEffect(() => {
+    if (isGuestMode) return undefined
+    if (!isLoaded || !isSignedIn) return undefined
+
+    const remoteAssets = certifications
+      .filter((cert) => cert.assetUrl && !/^(data:|blob:)/i.test(cert.assetUrl))
+      .map((cert) => ({ id: cert.id, assetUrl: cert.assetUrl }))
+    const directAssetEntries = certifications
+      .filter((cert) => /^(data:|blob:)/i.test(cert.assetUrl || ''))
+      .map((cert) => [cert.id, cert.assetUrl])
+
+    let cancelled = false
+    const createdUrls = []
+
+    Promise.all(remoteAssets.map(async ({ id }) => {
+      try {
+        const blob = await fetchCertificationAsset(id, getToken)
+        const objectUrl = URL.createObjectURL(blob)
+        createdUrls.push(objectUrl)
+        return [id, objectUrl]
+      } catch {
+        return [id, null]
+      }
+    })).then((entries) => {
+      if (!cancelled) {
+        setAssetPreviewUrls(Object.fromEntries([...directAssetEntries, ...entries]))
+      }
+    })
+
+    return () => {
+      cancelled = true
+      createdUrls.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [certifications, getToken, isGuestMode, isLoaded, isSignedIn])
+
+  useEffect(() => {
+    if (isGuestMode) return
+    if (typeof window === 'undefined' || loading) return
     window.localStorage.setItem(CERTIFICATIONS_STORAGE_KEY, JSON.stringify(certifications))
-  }, [certifications])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
     window.localStorage.setItem(CERTIFICATIONS_PINNED_STORAGE_KEY, JSON.stringify(pinnedIds))
-  }, [pinnedIds])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
     window.localStorage.setItem(CERTIFICATIONS_ROADMAP_STORAGE_KEY, JSON.stringify(roadmapItems))
-  }, [roadmapItems])
+  }, [certifications, isGuestMode, loading, pinnedIds, roadmapItems])
 
   // derive valid pinned IDs without a state-syncing effect
   const validPinnedIds = useMemo(
@@ -910,64 +988,65 @@ export function CertificationsPage() {
   }, [roadmapItems])
 
   const handleCertificateUpload = (certId) => {
-    setActiveUploadId(certId)
+    activeUploadIdRef.current = certId
     fileInputRef.current?.click()
   }
 
   const handleUploadChange = async (event) => {
     const [file] = Array.from(event.target.files || [])
-    if (!file || !activeUploadId) {
+    const uploadTargetId = activeUploadIdRef.current
+    activeUploadIdRef.current = null
+
+    if (!file || !uploadTargetId) {
       event.target.value = ''
       return
     }
 
-    const isPdf = String(file.type || '').toLowerCase().includes('pdf') || /\.pdf$/i.test(file.name)
-    const isImage = String(file.type || '').toLowerCase().startsWith('image/')
-    if (!isPdf && !isImage) {
+    if (file.size > 24 * 1024 * 1024) {
+      toast.error('Certificate files must be 24 MB or smaller.')
       event.target.value = ''
       return
     }
 
     try {
+      const isPdf = String(file.type || '').toLowerCase().includes('pdf') || /\.pdf$/i.test(file.name)
+      const isImage = String(file.type || '').toLowerCase().startsWith('image/')
       const assetUrl = await readFileAsDataUrl(file)
-      const assetType = isPdf ? 'pdf' : 'image'
-
-      setCertifications((current) => current.map((cert) => (
-        cert.id === activeUploadId
-          ? { ...cert, assetUrl, assetType, assetName: file.name }
-          : cert
-      )))
-      setSelectedCertification((current) => (current?.id === activeUploadId ? { ...current, assetUrl, assetType, assetName: file.name } : current))
+      const assetType = isPdf ? 'pdf' : isImage ? 'image' : 'file'
+      const currentCertification = certifications.find((item) => item.id === uploadTargetId)
+      const saved = await updateCertification(uploadTargetId, { ...currentCertification, assetUrl, assetType, assetName: file.name }, getToken)
+      setCertifications((current) => current.map((cert) => cert.id === uploadTargetId ? hydrateCert(saved) : cert))
+      setSelectedCertification((current) => current?.id === uploadTargetId ? hydrateCert(saved) : current)
+      toast.success('Certificate asset saved.')
+    } catch (error) {
+      toast.error(error.message || 'Unable to upload certificate asset.')
     } finally {
-      setActiveUploadId(null)
       event.target.value = ''
     }
   }
 
-  const togglePin = (certId) => {
-    setPinnedIds((current) => {
-      if (current.includes(certId)) {
-        return current.filter((id) => id !== certId)
-      }
-
-      if (current.length >= 3) {
-        return [...current.slice(1), certId]
-      }
-
-      return [...current, certId]
-    })
+  const togglePin = async (certId) => {
+    const nextIds = pinnedIds.includes(certId)
+      ? pinnedIds.filter((id) => id !== certId)
+      : pinnedIds.length >= 3 ? [...pinnedIds.slice(1), certId] : [...pinnedIds, certId]
+    try {
+      const saved = await setFeaturedCertifications(nextIds, getToken)
+      setCertifications(saved.map((item) => hydrateCert(item)))
+      setPinnedIds(nextIds)
+    } catch (error) { toast.error(error.message || 'Unable to update featured certifications.') }
   }
 
-  const saveReorder = (reordered) => {
-    setCertifications((current) => {
-      const orderMap = new Map(reordered.map((cert, index) => [cert.id, index]))
-      return current.map((cert) => ({ ...cert, displayOrder: orderMap.has(cert.id) ? orderMap.get(cert.id) : cert.displayOrder }))
-    })
-    setIsReorderOpen(false)
+  const saveReorder = async (reordered) => {
+    try {
+      const saved = await reorderCertifications(reordered.map((item) => item.id), getToken)
+      setCertifications(saved.map((item) => hydrateCert(item)))
+      setIsReorderOpen(false)
+      toast.success('Certification order saved.')
+    } catch (error) { toast.error(error.message || 'Unable to reorder certifications.') }
   }
 
   const openTechnology = (technology) => {
-    navigate(`/skills?technology=${encodeURIComponent(technology)}`)
+    navigate(resolvePath(`/skills?technology=${encodeURIComponent(technology)}`))
   }
 
   const openAddCertification = () => {
@@ -985,37 +1064,23 @@ export function CertificationsPage() {
     setIsCertificationEditorOpen(true)
   }
 
-  const saveCertification = (nextCert) => {
-    setCertifications((current) => {
-      if (nextCert.id) {
-        return current.map((cert) => (cert.id === nextCert.id ? { ...cert, ...nextCert } : cert))
-      }
-
-      const created = {
-        ...nextCert,
-        id: createCertificationId(nextCert.name),
-        featured: false,
-        displayOrder: current.length,
-        assetUrl: null,
-        assetType: null,
-        assetName: '',
-      }
-
-      return [created, ...current]
-    })
-
-    setSelectedCertification((current) => {
-      if (current?.id === nextCert.id) {
-        return { ...current, ...nextCert }
-      }
-      return current
-    })
-
-    setIsCertificationEditorOpen(false)
-    setEditingCertification(null)
+  const saveCertification = async (nextCert) => {
+    try {
+      const saved = nextCert.id
+        ? await updateCertification(nextCert.id, nextCert, getToken)
+        : await createCertification({ ...nextCert, featured: false, displayOrder: certifications.length }, getToken)
+      const hydrated = hydrateCert(saved)
+      setCertifications((current) => nextCert.id
+        ? current.map((cert) => cert.id === hydrated.id ? hydrated : cert)
+        : [...current, hydrated])
+      setSelectedCertification((current) => current?.id === hydrated.id ? hydrated : current)
+      setIsCertificationEditorOpen(false)
+      setEditingCertification(null)
+      toast.success(nextCert.id ? 'Certification updated.' : 'Certification added.')
+    } catch (error) { toast.error(error.message || 'Unable to save certification.') }
   }
 
-  const deleteCertification = (certId) => {
+  const deleteCertification = async (certId) => {
     const certToDelete = certifications.find((cert) => cert.id === certId)
     if (!certToDelete) {
       return
@@ -1026,14 +1091,29 @@ export function CertificationsPage() {
       return
     }
 
-    setCertifications((current) => current.filter((cert) => cert.id !== certId))
-    setPinnedIds((current) => current.filter((id) => id !== certId))
-    setSelectedCertification((current) => (current?.id === certId ? null : current))
-    setActiveUploadId((current) => (current === certId ? null : current))
+    try {
+      await deleteCertificationRequest(certId, getToken)
+      setCertifications((current) => current.filter((cert) => cert.id !== certId))
+      setPinnedIds((current) => current.filter((id) => id !== certId))
+      setSelectedCertification((current) => (current?.id === certId ? null : current))
+      if (activeUploadIdRef.current === certId) activeUploadIdRef.current = null
+      toast.success('Certification deleted.')
+    } catch (error) { toast.error(error.message || 'Unable to delete certification.') }
+  }
+
+  const saveRoadmap = async (items) => {
+    try {
+      const saved = await updateCertificationRoadmap(items, getToken)
+      setRoadmapItems(saved)
+      setIsRoadmapEditorOpen(false)
+      toast.success('Certification roadmap saved.')
+    } catch (error) { toast.error(error.message || 'Unable to save certification roadmap.') }
   }
 
   return (
     <div className="page-shell page-shell--wide page-stack pb-14 certifications-page">
+      {loading ? <p className="surface-card px-5 py-4 text-sm text-[var(--color-text-soft)]">Loading certifications…</p> : null}
+      {loadError ? <p className="surface-card border-[#9d4c32] px-5 py-4 text-sm text-[#f2a28a]">{loadError}</p> : null}
       <section className="surface-card surface-card--hero certifications-hero overflow-hidden px-6 py-8 md:px-10 md:py-10 fade-in-up">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(247,204,129,0.2),transparent_28%),radial-gradient(circle_at_84%_16%,rgba(231,155,63,0.18),transparent_24%),radial-gradient(circle_at_50%_86%,rgba(207,121,50,0.12),transparent_34%)]" />
         <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -1045,9 +1125,9 @@ export function CertificationsPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link to="/dashboard" className="button-secondary px-4 py-2 text-sm">Back to dashboard</Link>
-            <button type="button" onClick={openAddCertification} className="button-secondary px-4 py-2 text-sm">Add certification</button>
-            <button type="button" onClick={() => setIsRoadmapEditorOpen(true)} className="button-primary px-4 py-2 text-sm">Edit roadmap</button>
+            <Link to={resolvePath('/dashboard')} className="button-secondary px-4 py-2 text-sm">Back to dashboard</Link>
+            {!isGuestMode ? <button type="button" onClick={openAddCertification} className="button-secondary px-4 py-2 text-sm">Add certification</button> : null}
+            {!isGuestMode ? <button type="button" onClick={() => setIsRoadmapEditorOpen(true)} className="button-primary px-4 py-2 text-sm">Edit roadmap</button> : <span className="guest-read-only-badge">Guest view · Read only</span>}
           </div>
         </div>
       </section>
@@ -1084,23 +1164,24 @@ export function CertificationsPage() {
           </select>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-3">
+        {!isGuestMode ? <div className="mt-4 flex flex-wrap gap-3">
           <button type="button" onClick={openAddCertification} className="button-primary px-4 py-2 text-sm">Add certification</button>
           <button type="button" onClick={() => setIsReorderOpen(true)} className="button-secondary px-4 py-2 text-sm">Reorder</button>
           <p className="self-center text-sm text-[var(--color-text-soft)]">Add new certifications, edit current ones, and remove entries you no longer need.</p>
-        </div>
+        </div> : null}
       </section>
 
-      <section className="surface-card surface-card--strong p-5 md:p-6">
+      {featuredCertifications.length ? <section className="surface-card surface-card--strong p-5 md:p-6">
         <SectionHeader
           eyebrow="Featured Achievements"
           title="Pinned certifications"
-          description="Choose up to three credentials to live at the top like framed trophies."
+          description={isGuestMode ? 'Selected credentials from the public achievement collection.' : 'Choose up to three credentials to live at the top like framed trophies.'}
         />
 
         <div className="mt-5 grid gap-4 xl:grid-cols-3">
           {featuredCertifications.map((cert, index) => {
             const meta = statusMeta[cert.status]
+            const previewUrl = resolveCertificationPreviewUrl(cert, assetPreviewUrls)
             return (
               <motion.article
                 key={cert.id}
@@ -1127,9 +1208,9 @@ export function CertificationsPage() {
                       <p className="mt-1 text-sm text-[var(--color-text-soft)]">{cert.organization}</p>
                     </div>
                   </div>
-                  <button type="button" onClick={() => togglePin(cert.id)} className="button-secondary px-3 py-2 text-xs">
+                  {!isGuestMode ? <button type="button" onClick={() => togglePin(cert.id)} className="button-secondary px-3 py-2 text-xs">
                     {validPinnedIds.includes(cert.id) ? 'Unpin' : 'Pin'}
-                  </button>
+                  </button> : null}
                 </div>
 
                 <div className="relative z-10 mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
@@ -1148,17 +1229,25 @@ export function CertificationsPage() {
 
                   <div className="space-y-4">
                     <div className="rounded-[1.45rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(18,13,10,0.9)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                      {cert.assetUrl ? (
+                      {cert.assetUrl && previewUrl ? (
                         <button type="button" onClick={() => setSelectedCertification(cert)} className="group relative block w-full overflow-hidden rounded-[1.15rem] border border-[rgba(247,204,129,0.22)] bg-black/20 text-left">
-                          {cert.assetType === 'pdf' ? (
-                            <iframe src={cert.assetUrl} title={`${cert.name} thumbnail`} className="certification-thumb h-56 w-full transition-transform duration-300 group-hover:scale-[1.03]" />
+                          {cert.assetType === 'file' ? (
+                            <div className="grid h-56 place-items-center px-5 text-center text-sm text-[var(--color-text-soft)]">File saved · Open to download</div>
+                          ) : cert.assetType === 'pdf' ? (
+                            <iframe src={previewUrl} title={`${cert.name} thumbnail`} className="certification-thumb pointer-events-none h-56 w-full transition-transform duration-300 group-hover:scale-[1.03]" />
                           ) : (
-                            <img src={cert.assetUrl} alt={`${cert.name} certificate`} className="h-56 w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                            <img src={previewUrl} alt={`${cert.name} certificate`} className="h-56 w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                           )}
                           <span className="absolute left-3 top-3 rounded-full border border-[rgba(247,204,129,0.24)] bg-[rgba(30,21,15,0.86)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.18em] text-[var(--color-brand-ink)]">
-                            {cert.assetType === 'pdf' ? 'PDF Preview' : 'Image Preview'}
+                            {cert.assetType === 'pdf' ? 'PDF Preview' : cert.assetType === 'file' ? 'File' : 'Image Preview'}
                           </span>
                         </button>
+                      ) : cert.assetUrl ? (
+                        <div className="grid h-56 w-full place-items-center rounded-[1.15rem] border border-dashed border-[rgba(214,160,89,0.26)] bg-[rgba(30,21,15,0.84)] px-5 text-center text-sm text-[var(--color-text-soft)]">
+                          {assetPreviewUrls[cert.id] === null ? 'Preview unavailable. Use Replace Media to upload this file again.' : 'Loading secure preview…'}
+                        </div>
+                      ) : isGuestMode ? (
+                        <div className="grid h-56 w-full place-items-center rounded-[1.15rem] border border-dashed border-[rgba(214,160,89,0.26)] bg-[rgba(30,21,15,0.84)] text-sm text-[var(--color-text-soft)]">No public media attached</div>
                       ) : (
                         <button type="button" onClick={() => handleCertificateUpload(cert.id)} className="grid h-56 w-full place-items-center rounded-[1.15rem] border border-dashed border-[rgba(214,160,89,0.26)] bg-[rgba(30,21,15,0.84)] text-sm text-[var(--color-text-soft)]">
                           Upload a certificate image or PDF
@@ -1166,25 +1255,25 @@ export function CertificationsPage() {
                       )}
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    {!isGuestMode ? <div className="flex flex-wrap gap-2">
                       {cert.skillsGained.slice(0, 4).map((skill) => (
                         <span key={skill} className="chip chip--accent">
                           {skill}
                         </span>
                       ))}
-                    </div>
+                    </div> : null}
 
-                    <div className="flex flex-wrap gap-2">
+                    {!isGuestMode ? <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => openEditCertification(cert.id)} className="button-secondary px-4 py-2 text-xs">Edit</button>
                       <button type="button" onClick={() => deleteCertification(cert.id)} className="button-secondary px-4 py-2 text-xs">Delete</button>
-                    </div>
+                    </div> : null}
                   </div>
                 </div>
               </motion.article>
             )
           })}
         </div>
-      </section>
+      </section> : null}
 
       <section className="surface-card surface-card--strong p-5 md:p-6">
         <SectionHeader
@@ -1197,6 +1286,7 @@ export function CertificationsPage() {
           {galleryCertifications.map((cert, index) => {
             const meta = statusMeta[cert.status]
             const isPinned = validPinnedIds.includes(cert.id)
+            const previewUrl = resolveCertificationPreviewUrl(cert, assetPreviewUrls)
 
             return (
               <motion.article
@@ -1234,17 +1324,25 @@ export function CertificationsPage() {
                   </dl>
 
                   <div className="rounded-[1.05rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(18,13,10,0.84)] p-2.5">
-                    {cert.assetUrl ? (
+                    {cert.assetUrl && previewUrl ? (
                       <button type="button" onClick={() => setSelectedCertification(cert)} className="group relative block w-full overflow-hidden rounded-[0.9rem] border border-[rgba(247,204,129,0.2)] bg-black/20 text-left">
-                        {cert.assetType === 'pdf' ? (
-                          <iframe src={cert.assetUrl} title={`${cert.name} preview`} className="h-32 w-full transition-transform duration-300 group-hover:scale-[1.02]" />
+                        {cert.assetType === 'file' ? (
+                          <div className="grid h-32 place-items-center px-4 text-center text-xs text-[var(--color-text-soft)]">File saved · Open to download</div>
+                        ) : cert.assetType === 'pdf' ? (
+                          <iframe src={previewUrl} title={`${cert.name} preview`} className="pointer-events-none h-32 w-full transition-transform duration-300 group-hover:scale-[1.02]" />
                         ) : (
-                          <img src={cert.assetUrl} alt={`${cert.name} certificate`} className="h-32 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+                          <img src={previewUrl} alt={`${cert.name} certificate`} className="h-32 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
                         )}
                         <span className="absolute left-2 top-2 rounded-full border border-[rgba(247,204,129,0.24)] bg-[rgba(30,21,15,0.86)] px-2.5 py-1 text-[0.62rem] uppercase tracking-[0.16em] text-[var(--color-brand-ink)]">
-                          {cert.assetType === 'pdf' ? 'PDF' : 'Image'}
+                          {cert.assetType === 'pdf' ? 'PDF' : cert.assetType === 'file' ? 'File' : 'Image'}
                         </span>
                       </button>
+                    ) : cert.assetUrl ? (
+                      <div className="grid h-32 w-full place-items-center rounded-[0.9rem] border border-dashed border-[rgba(214,160,89,0.28)] bg-[rgba(30,21,15,0.84)] px-4 text-center text-xs text-[var(--color-text-soft)]">
+                        {assetPreviewUrls[cert.id] === null ? 'Preview unavailable. Replace the media to retry.' : 'Loading secure preview…'}
+                      </div>
+                    ) : isGuestMode ? (
+                      <div className="grid h-32 w-full place-items-center rounded-[0.9rem] border border-dashed border-[rgba(214,160,89,0.28)] bg-[rgba(30,21,15,0.84)] text-xs text-[var(--color-text-soft)]">No public media attached</div>
                     ) : (
                       <button type="button" onClick={() => handleCertificateUpload(cert.id)} className="grid h-32 w-full place-items-center rounded-[0.9rem] border border-dashed border-[rgba(214,160,89,0.28)] bg-[rgba(30,21,15,0.84)] text-xs text-[var(--color-text-soft)]">
                         Upload image or PDF
@@ -1267,7 +1365,7 @@ export function CertificationsPage() {
                     <p className="mb-1 text-[0.68rem] uppercase tracking-[0.22em] text-[var(--color-text-muted)]">Associated projects</p>
                     <div className="flex flex-wrap gap-2">
                       {cert.associatedProjects.map((project) => (
-                        <Link key={project} to="/projects" className="chip">
+                        <Link key={project} to={resolvePath('/projects')} className="chip">
                           {project}
                         </Link>
                       ))}
@@ -1278,18 +1376,18 @@ export function CertificationsPage() {
                     <button type="button" onClick={() => setSelectedCertification(cert)} className="button-primary px-4 py-2 text-xs">
                       View Certificate
                     </button>
-                    <button type="button" onClick={() => openEditCertification(cert.id)} className="button-secondary px-4 py-2 text-xs">
+                    {!isGuestMode ? <button type="button" onClick={() => openEditCertification(cert.id)} className="button-secondary px-4 py-2 text-xs">
                       Edit
-                    </button>
-                    <button type="button" onClick={() => handleCertificateUpload(cert.id)} className="button-secondary px-4 py-2 text-xs">
+                    </button> : null}
+                    {!isGuestMode ? <button type="button" onClick={() => handleCertificateUpload(cert.id)} className="button-secondary px-4 py-2 text-xs">
                       {cert.assetUrl ? 'Replace Media' : 'Upload Media'}
-                    </button>
-                    <button type="button" onClick={() => togglePin(cert.id)} className="button-secondary px-4 py-2 text-xs">
+                    </button> : null}
+                    {!isGuestMode ? <button type="button" onClick={() => togglePin(cert.id)} className="button-secondary px-4 py-2 text-xs">
                       {isPinned ? 'Unpin' : 'Pin'}
-                    </button>
-                    <button type="button" onClick={() => deleteCertification(cert.id)} className="button-secondary px-4 py-2 text-xs">
+                    </button> : null}
+                    {!isGuestMode ? <button type="button" onClick={() => deleteCertification(cert.id)} className="button-secondary px-4 py-2 text-xs">
                       Delete
-                    </button>
+                    </button> : null}
                   </div>
                 </div>
               </motion.article>
@@ -1320,7 +1418,7 @@ export function CertificationsPage() {
             title="A growth path instead of a percentage bar"
             description="Completed items glow warmly, the current certification pulses subtly, and future steps stay dim until they move up."
           />
-          <button type="button" onClick={() => setIsRoadmapEditorOpen(true)} className="button-secondary px-4 py-2 text-sm">Edit roadmap</button>
+          {!isGuestMode ? <button type="button" onClick={() => setIsRoadmapEditorOpen(true)} className="button-secondary px-4 py-2 text-sm">Edit roadmap</button> : null}
         </div>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
@@ -1400,23 +1498,21 @@ export function CertificationsPage() {
         </div>
       </section>
 
-      <section className="surface-card surface-card--strong p-5 md:p-6">
-        <SectionHeader
-          eyebrow="Preview Uploads"
-          title="Certificate images and PDFs with previews"
-          description="Upload any certificate image or PDF to generate preview cards and open full media in a modal."
-        />
-        <input ref={fileInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={handleUploadChange} />
-      </section>
+      {!isGuestMode ? <input ref={fileInputRef} type="file" className="hidden" onChange={handleUploadChange} /> : null}
 
       <AnimatePresence>
         {selectedCertification ? (
-          <CertificationModal cert={selectedCertification} onClose={() => setSelectedCertification(null)} />
+          <CertificationModal
+            cert={selectedCertification}
+            previewUrl={resolveCertificationPreviewUrl(selectedCertification, assetPreviewUrls)}
+            previewFailed={assetPreviewUrls[selectedCertification.id] === null}
+            onClose={() => setSelectedCertification(null)}
+          />
         ) : null}
       </AnimatePresence>
 
       <AnimatePresence>
-        {isCertificationEditorOpen ? (
+        {!isGuestMode && isCertificationEditorOpen ? (
           <CertificationEditorModal
             cert={editingCertification}
             onSave={saveCertification}
@@ -1429,7 +1525,7 @@ export function CertificationsPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {isReorderOpen ? (
+        {!isGuestMode && isReorderOpen ? (
           <CertReorderModal
             certifications={certifications}
             onSave={saveReorder}
@@ -1439,10 +1535,21 @@ export function CertificationsPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {isRoadmapEditorOpen ? (
-          <RoadmapEditorModal value={roadmapItems} onSave={(next) => { setRoadmapItems(next); setIsRoadmapEditorOpen(false) }} onClose={() => setIsRoadmapEditorOpen(false)} />
+        {!isGuestMode && isRoadmapEditorOpen ? (
+          <RoadmapEditorModal value={roadmapItems} onSave={saveRoadmap} onClose={() => setIsRoadmapEditorOpen(false)} />
         ) : null}
       </AnimatePresence>
     </div>
   )
+}
+
+function AuthenticatedCertificationsPage() {
+  return <CertificationsPageContent auth={useAuth()} />
+}
+
+export function CertificationsPage() {
+  const { isGuestMode } = useGuestMode()
+  return isGuestMode
+    ? <CertificationsPageContent auth={{ getToken: async () => '', isLoaded: true, isSignedIn: false }} />
+    : <AuthenticatedCertificationsPage />
 }

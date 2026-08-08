@@ -75,6 +75,8 @@ function buildInitialState(project) {
     targetCompletion: toDateInputValue(project?.targetCompletion),
     challenges: project?.challenges ?? '',
     lessonsLearned: project?.lessonsLearned ?? '',
+    publicVisible: project?.publicVisible ?? true,
+    featured: project?.featured ?? false,
   }
 }
 
@@ -147,6 +149,8 @@ export function ProjectForm({ project, onSubmit, onCancel, submitting = false, e
       targetCompletion: formData.targetCompletion || null,
       challenges: formData.challenges.trim(),
       lessonsLearned: formData.lessonsLearned.trim(),
+      publicVisible: formData.publicVisible,
+      featured: formData.featured,
     })
   }
 
@@ -203,6 +207,17 @@ export function ProjectForm({ project, onSubmit, onCancel, submitting = false, e
         type="textarea"
         rows={4}
       />
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="flex cursor-pointer items-center gap-3 rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
+          <input type="checkbox" checked={formData.publicVisible} onChange={(event) => setFormData((current) => ({ ...current, publicVisible: event.target.checked }))} className="h-4 w-4 accent-[var(--color-brand)]" />
+          <span className="text-sm text-[var(--color-text-soft)]">Visible on public portfolio</span>
+        </label>
+        <label className="flex cursor-pointer items-center gap-3 rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] px-4 py-3">
+          <input type="checkbox" checked={formData.featured} onChange={(event) => setFormData((current) => ({ ...current, featured: event.target.checked }))} className="h-4 w-4 accent-[var(--color-brand)]" />
+          <span className="text-sm text-[var(--color-text-soft)]">Featured project (replaces the current selection)</span>
+        </label>
+      </div>
 
       <div className="grid gap-6 md:grid-cols-3">
         <Field label="GitHub URL" name="githubUrl" value={formData.githubUrl} onChange={handleChange} placeholder="https://github.com/username/project" error={errors.githubUrl} />

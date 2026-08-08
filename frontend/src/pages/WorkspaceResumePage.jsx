@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { fetchWorkspaceResume, fetchWorkspaceResumePdf, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
+import { useGuestMode } from '../context/GuestModeContext'
 
 function formatBytes(size) {
   const bytes = Number(size || 0)
@@ -41,13 +42,14 @@ function isPdfFile(file) {
   return type.includes('pdf') || /\.pdf$/i.test(name)
 }
 
-export function WorkspaceResumePage() {
-  const { getToken } = useAuth()
-  const [resume, setResume] = useState(null)
-  const [resumePdfUrl, setResumePdfUrl] = useState('')
+function WorkspaceResumePageContent({ getToken }) {
+  const { isGuestMode, portfolio, resolvePath } = useGuestMode()
+  const publicResumeFileUrl = portfolio?.resume?.fileUrl || ''
+  const [resume, setResume] = useState(() => isGuestMode ? portfolio.resume : null)
+  const [resumePdfUrl, setResumePdfUrl] = useState(() => isGuestMode ? portfolio.resume?.fileUrl || '' : '')
   const [resumeLoadError, setResumeLoadError] = useState('')
   const [resumePreviewError, setResumePreviewError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!isGuestMode)
   const [uploading, setUploading] = useState(false)
   const [loadingPdf, setLoadingPdf] = useState(false)
   const [viewerReady, setViewerReady] = useState(false)
@@ -55,20 +57,26 @@ export function WorkspaceResumePage() {
 
   useEffect(() => {
     return () => {
-      if (resumePdfUrl) {
+      if (resumePdfUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(resumePdfUrl)
       }
     }
   }, [resumePdfUrl])
 
   const loadResumePdf = useCallback(async () => {
+    if (isGuestMode) {
+      const publicUrl = publicResumeFileUrl
+      if (!publicUrl) throw new Error('No public resume is available.')
+      setResumePdfUrl(publicUrl)
+      return publicUrl
+    }
     setLoadingPdf(true)
     setResumePreviewError('')
     try {
       const fileBlob = await fetchWorkspaceResumePdf(getToken)
       const blobUrl = URL.createObjectURL(fileBlob)
       setResumePdfUrl((current) => {
-        if (current) {
+        if (current?.startsWith('blob:')) {
           URL.revokeObjectURL(current)
         }
         return blobUrl
@@ -80,7 +88,7 @@ export function WorkspaceResumePage() {
     } finally {
       setLoadingPdf(false)
     }
-  }, [getToken])
+  }, [getToken, isGuestMode, publicResumeFileUrl])
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -91,6 +99,7 @@ export function WorkspaceResumePage() {
   }, [])
 
   useEffect(() => {
+    if (isGuestMode) return
     async function loadResume() {
       try {
         setResumeLoadError('')
@@ -105,7 +114,7 @@ export function WorkspaceResumePage() {
         } else {
           setResumePreviewError('')
           setResumePdfUrl((current) => {
-            if (current) {
+            if (current?.startsWith('blob:')) {
               URL.revokeObjectURL(current)
             }
             return ''
@@ -120,7 +129,7 @@ export function WorkspaceResumePage() {
     }
 
     loadResume()
-  }, [getToken, loadResumePdf])
+  }, [getToken, isGuestMode, loadResumePdf])
 
   const handleUploadClick = () => {
     fileInputRef.current?.click()
@@ -184,9 +193,9 @@ export function WorkspaceResumePage() {
     <div className="page-shell page-shell--wide page-stack pb-14">
       <section className="surface-card surface-card--hero px-6 py-8 md:px-10 md:py-10 fade-in-up">
         <p className="section-eyebrow">Resume Workspace</p>
-        <h2 className="section-title mt-3 text-4xl md:text-5xl">Manage your recruiter-ready resume.</h2>
+        <h2 className="section-title mt-3 text-4xl md:text-5xl">{isGuestMode ? 'Recruiter-ready resume.' : 'Manage your recruiter-ready resume.'}</h2>
         <p className="section-copy mt-4 max-w-3xl text-sm leading-7 md:text-base">
-          Upload, preview, replace, and download your current PDF without leaving DevVault.
+          {isGuestMode ? 'Preview the actual uploaded PDF, open it in a new tab, download it, or print it directly.' : 'Upload, preview, replace, and download your current PDF without leaving DevVault.'}
         </p>
       </section>
 
@@ -210,9 +219,9 @@ export function WorkspaceResumePage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={handleUploadClick} disabled={uploading} className="button-primary px-4 py-2 text-sm disabled:opacity-60">
+            {!isGuestMode ? <button type="button" onClick={handleUploadClick} disabled={uploading} className="button-primary px-4 py-2 text-sm disabled:opacity-60">
               {uploading ? 'Uploading...' : hasResume ? 'Replace Resume' : 'Upload Resume'}
-            </button>
+            </button> : null}
             {hasResume ? (
               <>
                 <button type="button" onClick={handleOpenResume} disabled={loadingPdf} className="button-secondary px-4 py-2 text-sm disabled:opacity-60">
@@ -221,15 +230,16 @@ export function WorkspaceResumePage() {
                 <button type="button" onClick={handleDownloadResume} disabled={loadingPdf} className="button-secondary px-4 py-2 text-sm disabled:opacity-60">
                   Download
                 </button>
+                {isGuestMode ? <button type="button" onClick={() => window.print()} className="button-secondary px-4 py-2 text-sm">Print / Save PDF</button> : null}
               </>
             ) : null}
-            <Link to="/dashboard" className="button-secondary px-4 py-2 text-sm">
+            <Link to={resolvePath('/dashboard')} className="button-secondary px-4 py-2 text-sm">
               Back to Dashboard
             </Link>
           </div>
         </div>
 
-        <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleFileChange} />
+        {!isGuestMode ? <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleFileChange} /> : null}
       </section>
 
       <section className="surface-card surface-card--strong resume-viewer-shell p-4 md:p-5">
@@ -250,10 +260,20 @@ export function WorkspaceResumePage() {
           )
         ) : (
           <div className="widget-card p-6 text-sm text-[var(--color-text-soft)]">
-            No resume uploaded yet. Upload a PDF to enable preview, download, and quick sharing.
+            {isGuestMode ? 'No public resume is currently available.' : 'No resume uploaded yet. Upload a PDF to enable preview, download, and quick sharing.'}
           </div>
         )}
       </section>
     </div>
   )
+}
+
+function AuthenticatedWorkspaceResumePage() {
+  const { getToken } = useAuth()
+  return <WorkspaceResumePageContent getToken={getToken} />
+}
+
+export function WorkspaceResumePage() {
+  const { isGuestMode } = useGuestMode()
+  return isGuestMode ? <WorkspaceResumePageContent getToken={async () => ''} /> : <AuthenticatedWorkspaceResumePage />
 }
