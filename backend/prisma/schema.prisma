@@ -106,6 +106,7 @@ model Skill {
   color            String
   lastUsed         DateTime?
   notes            String?
+  favorite         Boolean              @default(false)
   publicVisible    Boolean              @default(true)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt

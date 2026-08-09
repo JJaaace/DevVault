@@ -8,6 +8,8 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { DevVaultLogo } from './components/branding/DevVaultLogo'
 import { LaunchIntro } from './components/branding/LaunchIntro'
 import { GuestVaultShell } from './components/guest/GuestVaultShell'
+import { RouteMetadata } from './components/RouteMetadata'
+import { NotFoundState } from './components/NotFoundState'
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then(({ LoginPage: Page }) => ({ default: Page })))
 const SignupPage = lazy(() => import('./pages/SignupPage').then(({ SignupPage: Page }) => ({ default: Page })))
@@ -55,6 +57,7 @@ function GuestRoutes() {
             <Route path="resume" element={<WorkspaceResumePage />} />
           </Route>
           <Route path="/resume/:username" element={<LegacyResumeRedirect />} />
+          <Route path="*" element={<NotFoundState publicMode />} />
         </Routes>
       </Suspense>
     </Layout>
@@ -65,10 +68,11 @@ function App() {
   const location = useLocation()
   const isGuestRoute = location.pathname.startsWith('/portfolio/') || location.pathname.startsWith('/resume/')
 
-  if (isGuestRoute) return <GuestRoutes />
+  if (isGuestRoute) return <><RouteMetadata /><GuestRoutes /></>
 
   return (
     <Layout>
+      <RouteMetadata />
       <LaunchIntro />
       <header className="sticky top-0 z-30 px-4 pt-4">
         <div className="nav-shell nav-shell--workspace mx-auto max-w-6xl gap-4">
@@ -99,7 +103,7 @@ function App() {
         </div>
       </header>
 
-      <main className="page-shell page-shell--wide page-stack pb-14 pt-6 md:pt-8">
+      <main id="main-content" className="page-shell page-shell--wide page-stack pb-14 pt-6 md:pt-8">
         <Suspense fallback={<div className="widget-card p-8 text-sm text-[var(--color-text-soft)]">Opening workspace…</div>}>
         <Routes>
           <Route
@@ -213,6 +217,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="*" element={<NotFoundState />} />
         </Routes>
         </Suspense>
       </main>

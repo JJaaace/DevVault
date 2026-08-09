@@ -1,4 +1,4 @@
-const { listProjects } = require('../services/projectService')
+const { listProjects, serializeOwnerProject } = require('../services/projectService')
 const { listSkills } = require('../services/skillService')
 const { getLocalStore } = require('../services/localStore')
 const { sendSuccess, sendError } = require('../utils/http')
@@ -8,6 +8,7 @@ const { isPostgresMode } = require('../config/persistence')
 const { listGoals } = require('../services/goalService')
 const { listCertifications } = require('../services/certificationService')
 const { getResumeMetadata } = require('../services/resumeService')
+const { serializeOwnerProfile } = require('./profileController')
 
 async function loadProfile(clerkUserId) {
   if (isPostgresMode()) {
@@ -30,8 +31,8 @@ async function getDashboard(req, res) {
     ])
 
     const payload = buildDashboardPayload({
-      profile,
-      projects,
+      profile: serializeOwnerProfile(profile),
+      projects: projects.map(serializeOwnerProject),
       skills,
       goals,
       certifications,

@@ -92,6 +92,10 @@ function normalizeInteger(value) {
 }
 
 function validateProfileImage(profileImageUrl) {
+  if (!profileImageUrl) {
+    return null
+  }
+
   if (typeof profileImageUrl !== 'string' || !/^data:image\/(png|jpe?g|webp);base64,/i.test(profileImageUrl)) {
     return 'Profile image must be a PNG, JPG, JPEG, or WEBP upload.'
   }
@@ -134,6 +138,11 @@ function buildProfilePayload(payload, clerkUserId) {
   }
 }
 
+function buildProfileUpdatePayload(payload, clerkUserId) {
+  const { profileImageUrl: ignoredProfileImage, ...profileData } = buildProfilePayload(payload, clerkUserId)
+  return profileData
+}
+
 function findMemoryProfile(clerkUserId) {
   return getLocalStore().profiles.find((profile) => profile.clerkUserId === clerkUserId) || null
 }
@@ -144,6 +153,16 @@ function findMemoryProfileByUsername(username) {
 
 function isEmbeddedImage(value) {
   return typeof value === 'string' && /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(value)
+}
+
+function serializeOwnerProfile(profile) {
+  if (!profile) return null
+  return {
+    ...profile,
+    profileImageUrl: isEmbeddedImage(profile.profileImageUrl)
+      ? `/api/profile/image?v=${new Date(profile.updatedAt).getTime() || Date.now()}`
+      : profile.profileImageUrl,
+  }
 }
 
 function serializePublicProfile(profile) {
@@ -157,7 +176,7 @@ function serializePublicProfile(profile) {
     lastName: profile.lastName,
     bio: profile.bio,
     profileImageUrl: isEmbeddedImage(profile.profileImageUrl)
-      ? `/api/public/portfolio/${encodeURIComponent(profile.username)}/profile-image`
+      ? `/api/public/portfolio/${encodeURIComponent(profile.username)}/profile-image?v=${new Date(profile.updatedAt).getTime() || Date.now()}`
       : profile.profileImageUrl,
     school: profile.school,
     graduationYear: profile.graduationYear,
@@ -217,6 +236,7 @@ function serializePublicSkill(skill) {
     yearsExperience: skill.yearsExperience,
     firstUsedYear: skill.firstUsedYear,
     projectsBuilt: skill.projectsBuilt,
+    favorite: Boolean(skill.favorite),
     color: skill.color,
     lastUsed: skill.lastUsed,
     relatedProjects: (skill.relatedProjects || []).map((project) => ({
@@ -269,6 +289,7 @@ function serializePublicCertification(certification, username) {
 
 async function getPublicPortfolio(req, res) {
   try {
+    res.set('Cache-Control', 'no-store')
     const username = typeof req.params.username === 'string' ? req.params.username.trim() : ''
 
     if (username.length < 2) {
@@ -369,7 +390,7 @@ async function getPublicCertificationAsset(req, res) {
   }
 }
 
-function sendEmbeddedPublicImage(res, dataUrl, fallbackName) {
+function sendEmbeddedImage(res, dataUrl, fallbackName, cacheControl = 'private, max-age=300') {
   const match = String(dataUrl || '').match(/^data:(image\/(?:png|jpe?g|webp|gif|avif));base64,([A-Za-z0-9+/=\s]+)$/i)
   if (!match) {
     return sendError(res, { statusCode: 404, message: 'Public image not found.' }, 'PUBLIC_IMAGE_NOT_FOUND', 'Public image not found.')
@@ -378,7 +399,7 @@ function sendEmbeddedPublicImage(res, dataUrl, fallbackName) {
   res.setHeader('Content-Type', match[1].toLowerCase())
   res.setHeader('Content-Length', String(content.length))
   res.setHeader('Content-Disposition', `inline; filename="${fallbackName}"`)
-  res.setHeader('Cache-Control', 'public, max-age=300')
+  res.setHeader('Cache-Control', cacheControl)
   res.setHeader('X-Content-Type-Options', 'nosniff')
   return res.status(200).send(content)
 }
@@ -388,7 +409,7 @@ async function getPublicProfileImage(req, res) {
     const username = String(req.params.username || '').trim()
     const profile = isPostgresMode() ? await prisma.profile.findUnique({ where: { username } }) : findMemoryProfileByUsername(username)
     if (!profile || !profile.portfolioEnabled) return sendError(res, { statusCode: 404, message: 'Public image not found.' }, 'PUBLIC_IMAGE_NOT_FOUND', 'Public image not found.')
-    return sendEmbeddedPublicImage(res, profile.profileImageUrl, 'profile-image')
+    return sendEmbeddedImage(res, profile.profileImageUrl, 'profile-image', 'public, max-age=300')
   } catch (error) {
     return sendError(res, error, 'PUBLIC_IMAGE_GET_FAILED', 'Unable to load public image.')
   }
@@ -402,9 +423,21 @@ async function getPublicProjectArtwork(req, res) {
     const { listProjects } = require('../services/projectService')
     const project = (await listProjects(profile.clerkUserId, { publicOnly: true })).find((item) => String(item.id) === String(req.params.projectId) && item.status !== 'ARCHIVED')
     if (!project) return sendError(res, { statusCode: 404, message: 'Public image not found.' }, 'PUBLIC_IMAGE_NOT_FOUND', 'Public image not found.')
-    return sendEmbeddedPublicImage(res, project.bannerImageUrl, `project-${project.id}`)
+    return sendEmbeddedImage(res, project.bannerImageUrl, `project-${project.id}`, 'public, max-age=300')
   } catch (error) {
     return sendError(res, error, 'PUBLIC_IMAGE_GET_FAILED', 'Unable to load public image.')
+  }
+}
+
+async function getProfileImage(req, res) {
+  try {
+    const profile = isPostgresMode()
+      ? await prisma.profile.findUnique({ where: { clerkUserId: req.auth.userId } })
+      : findMemoryProfile(req.auth.userId)
+    if (!profile) return sendError(res, { statusCode: 404, message: 'Profile image not found.' }, 'PROFILE_IMAGE_NOT_FOUND', 'Profile image not found.')
+    return sendEmbeddedImage(res, profile.profileImageUrl, 'profile-image')
+  } catch (error) {
+    return sendError(res, error, 'PROFILE_IMAGE_GET_FAILED', 'Unable to load profile picture.')
   }
 }
 
@@ -424,7 +457,7 @@ async function getProfile(req, res) {
     }
 
     return sendSuccess(res, {
-      ...profile,
+      ...serializeOwnerProfile(profile),
       githubSyncState,
     })
   } catch (error) {
@@ -460,7 +493,7 @@ async function createProfile(req, res) {
       const profile = await prisma.profile.create({
         data: buildProfilePayload(req.body, req.auth.userId),
       })
-      return sendCreated(res, profile)
+      return sendCreated(res, serializeOwnerProfile(profile))
     }
 
     if (findMemoryProfile(req.auth.userId)) {
@@ -485,7 +518,7 @@ async function createProfile(req, res) {
       ...store,
       profiles: [...store.profiles, profile],
     }))
-    return sendCreated(res, profile)
+    return sendCreated(res, serializeOwnerProfile(profile))
   } catch (error) {
     return sendError(res, error, 'PROFILE_CREATE_FAILED', 'Unable to create profile.')
   }
@@ -518,9 +551,9 @@ async function updateProfile(req, res) {
 
       const profile = await prisma.profile.update({
         where: { clerkUserId: req.auth.userId },
-        data: buildProfilePayload(req.body, req.auth.userId),
+        data: buildProfileUpdatePayload(req.body, req.auth.userId),
       })
-      return sendSuccess(res, profile)
+      return sendSuccess(res, serializeOwnerProfile(profile))
     }
 
     const existing = findMemoryProfile(req.auth.userId)
@@ -543,7 +576,7 @@ async function updateProfile(req, res) {
 
     const updatedProfile = {
       ...existing,
-      ...buildProfilePayload(req.body, req.auth.userId),
+      ...buildProfileUpdatePayload(req.body, req.auth.userId),
     }
 
     updateLocalStore((store) => ({
@@ -553,7 +586,7 @@ async function updateProfile(req, res) {
       ),
     }))
 
-    return sendSuccess(res, updatedProfile)
+    return sendSuccess(res, serializeOwnerProfile(updatedProfile))
   } catch (error) {
     return sendError(res, error, 'PROFILE_UPDATE_FAILED', 'Unable to update profile.')
   }
@@ -585,9 +618,9 @@ async function updateProfileImage(req, res) {
 
       const profile = await prisma.profile.update({
         where: { clerkUserId: req.auth.userId },
-        data: { profileImageUrl },
+        data: { profileImageUrl: profileImageUrl || null },
       })
-      return sendSuccess(res, profile)
+      return sendSuccess(res, serializeOwnerProfile(profile))
     }
 
     const existing = findMemoryProfile(req.auth.userId)
@@ -599,12 +632,12 @@ async function updateProfileImage(req, res) {
       }, 'PROFILE_NOT_FOUND', 'Profile not found.')
     }
 
-    const updatedProfile = { ...existing, profileImageUrl, updatedAt: new Date() }
+    const updatedProfile = { ...existing, profileImageUrl: profileImageUrl || null, updatedAt: new Date() }
     updateLocalStore((store) => ({
       ...store,
       profiles: store.profiles.map((profile) => profile.clerkUserId === req.auth.userId ? updatedProfile : profile),
     }))
-    return sendSuccess(res, updatedProfile)
+    return sendSuccess(res, serializeOwnerProfile(updatedProfile))
   } catch (error) {
     return sendError(res, error, 'PROFILE_IMAGE_UPDATE_FAILED', 'Unable to save profile picture.')
   }
@@ -653,10 +686,15 @@ module.exports = {
   getPublicPortfolio,
   getPublicCertificationAsset,
   getPublicProfileImage,
+  getProfileImage,
   getPublicProjectArtwork,
   getPublicResume,
   createProfile,
   updateProfile,
   updateProfileImage,
   deleteProfile,
+  validateProfileImage,
+  buildProfilePayload,
+  buildProfileUpdatePayload,
+  serializeOwnerProfile,
 }

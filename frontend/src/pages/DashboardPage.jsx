@@ -5,6 +5,7 @@ import { Link as RouterLink } from 'react-router-dom'
 import { TechnologyLogo } from '../components/TechnologyLogo'
 import { authenticatedRequest } from '../lib/api'
 import { getTimeGreeting } from '../lib/dashboardUtils'
+import { getSkillLevelMeta } from '../lib/skillUtils'
 import { decorateProjectShowcase } from '../lib/projectShowcaseCatalog'
 import { useGuestMode } from '../context/GuestModeContext'
 
@@ -25,14 +26,6 @@ const GOAL_STATUS = {
   future: 'Planning',
   complete: 'Complete',
   archived: 'Archived',
-}
-
-const EXPERIENCE_LABEL = {
-  BEGINNER: 'Learning',
-  ADVANCED_BEGINNER: 'Developing',
-  INTERMEDIATE: 'Comfortable',
-  ADVANCED: 'Confident',
-  EXPERT: 'Advanced',
 }
 
 const ICON_PATHS = {
@@ -355,7 +348,7 @@ function TechnologyBench({ skills, onHover }) {
                   <TechnologyLogo technologyKey={skill.technologyKey} name={skill.name} size="md" />
                   <span className="db-tech-copy">
                     <strong>{skill.name}</strong>
-                    <span>{EXPERIENCE_LABEL[skill.experienceLevel] || skill.experienceLevel}</span>
+                    <span>{getSkillLevelMeta(skill.experienceLevel).label}</span>
                     <small>{Number(skill.yearsExperience || 0)} yr{Number(skill.yearsExperience || 0) === 1 ? '' : 's'} · {Number(skill.projectsBuilt || 0)} project{Number(skill.projectsBuilt || 0) === 1 ? '' : 's'}</small>
                   </span>
                   <span className="db-tech-projects">{projects.length ? projects.slice(0, 2).map((project) => project.title).join(' · ') : 'Ready for a project'}</span>

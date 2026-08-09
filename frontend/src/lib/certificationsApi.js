@@ -9,4 +9,3 @@ export const reorderCertifications = (orderedIds, getToken) => authenticatedRequ
 export const setFeaturedCertifications = (featuredIds, getToken) => authenticatedRequest('/api/certifications/featured', { method: 'PUT', body: JSON.stringify({ featuredIds }) }, getToken)
 export const fetchCertificationRoadmap = (getToken) => authenticatedRequest('/api/certifications/roadmap', {}, getToken)
 export const updateCertificationRoadmap = (items, getToken) => authenticatedRequest('/api/certifications/roadmap', { method: 'PUT', body: JSON.stringify({ items }) }, getToken)
-export const importLegacyCertifications = (payload, getToken) => authenticatedRequest('/api/certifications/import-legacy', { method: 'POST', body: JSON.stringify(payload), timeoutMs: 30000, retryCount: 0 }, getToken)

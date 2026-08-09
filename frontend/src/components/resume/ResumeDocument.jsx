@@ -1,4 +1,5 @@
 import { DashboardCard } from '../DashboardCard'
+import { getSkillLevelMeta } from '../../lib/skillUtils'
 
 function formatDate(value) {
   if (!value) {
@@ -51,6 +52,8 @@ export function ResumeDocument({ profile, projects = [], skills = [], certificat
   const headline = [profile.currentRole, profile.location].filter(Boolean).join(' · ')
   const sortedProjects = [...projects].sort((left, right) => new Date(right.updatedAt || right.createdAt) - new Date(left.updatedAt || left.createdAt))
   const sortedSkills = [...skills].sort((left, right) => {
+    const favoriteDelta = Number(Boolean(right.favorite)) - Number(Boolean(left.favorite))
+    if (favoriteDelta !== 0) return favoriteDelta
     const yearsDelta = Number(right.yearsExperience || 0) - Number(left.yearsExperience || 0)
     if (yearsDelta !== 0) {
       return yearsDelta
@@ -136,7 +139,7 @@ export function ResumeDocument({ profile, projects = [], skills = [], certificat
                       <h3>{skill.name}</h3>
                       <span>{skill.yearsExperience || 0}y</span>
                     </div>
-                    <p className="resume-muted">{[skill.category, skill.experienceLevel, skill.projectsBuilt !== undefined ? `${skill.projectsBuilt} projects` : ''].filter(Boolean).join(' · ')}</p>
+                    <p className="resume-muted">{[skill.category, getSkillLevelMeta(skill.experienceLevel).name, skill.projectsBuilt !== undefined ? `${skill.projectsBuilt} projects` : ''].filter(Boolean).join(' · ')}</p>
                     {skill.notes ? <p>{skill.notes}</p> : null}
                   </div>
                 )) : <p className="resume-muted">No skills yet.</p>}

@@ -88,6 +88,7 @@ function buildInitialState(skill) {
     color: skill?.color ?? DEFAULT_SKILL_COLOR,
     lastUsed: skill?.lastUsed ? new Date(skill.lastUsed).toISOString().slice(0, 10) : '',
     notes: skill?.notes ?? '',
+    favorite: Boolean(skill?.favorite),
     relatedProjectIds: (skill?.relatedProjects || []).map((project) => String(project.id)),
     publicVisible: skill?.publicVisible ?? true,
   }
@@ -126,6 +127,7 @@ export function SkillFormModal({ skill, projects, onSubmit, onClose, submitting 
       color: formData.color.trim(),
       lastUsed: normalizeSkillDate(formData.lastUsed),
       notes: formData.notes.trim(),
+      favorite: formData.favorite,
       relatedProjectIds: formData.relatedProjectIds.map((id) => Number(id)),
       publicVisible: formData.publicVisible,
     })

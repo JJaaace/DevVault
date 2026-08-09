@@ -5,7 +5,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { DevVaultLogo } from '../components/branding/DevVaultLogo'
 import { SectionHeader } from '../components/SectionHeader'
+import { authenticatedRequest } from '../lib/api'
 import { createGoal, fetchGoals, reorderGoals, updateGoal } from '../lib/goalsApi'
+import { resolvePortfolioResourcePath } from '../lib/portfolioRoutes'
 
 const GOAL_CATEGORIES = [
   { key: 'Career', label: 'Career', icon: '💼' },
@@ -80,7 +82,7 @@ export const LEGACY_GOALS_MIGRATION_SNAPSHOT = [
     why: 'A deployed portfolio is the fastest way to show recruiters that the work is real and current.',
     notes: 'I want this to feel like a launch event, not a placeholder website.',
     resources: [
-      { label: 'Portfolio page', url: '/portfolio/jace' },
+      { label: 'Portfolio page', url: '/portfolio/:username' },
       { label: 'Resume workspace', url: '/resume-workspace' },
     ],
     relatedProjects: ['Portfolio Site'],
@@ -207,7 +209,7 @@ export const LEGACY_GOALS_MIGRATION_SNAPSHOT = [
     notes: 'This goal supports interviews, teamwork, and the long-term quality of my work.',
     resources: [
       { label: 'Writing practice', url: '/inside-vault' },
-      { label: 'Portfolio case studies', url: '/portfolio/jace' },
+      { label: 'Portfolio case studies', url: '/portfolio/:username' },
     ],
     relatedProjects: ['DevVault', 'Portfolio Site'],
     relatedCertifications: ['GitHub Foundations'],
@@ -429,7 +431,7 @@ function GoalOrbit({ goals, selectedGoalId, onSelectGoal, paused, onTogglePause 
   )
 }
 
-function GoalDetailsPanel({ goal, onNavigateSkill, onArchive, onPin, onEdit, onReorder, onAdd }) {
+function GoalDetailsPanel({ goal, portfolioUsername, onNavigateSkill, onArchive, onPin, onEdit, onReorder, onAdd }) {
   if (!goal) {
     return null
   }
@@ -511,17 +513,18 @@ function GoalDetailsPanel({ goal, onNavigateSkill, onArchive, onPin, onEdit, onR
         <section className="mt-5 goals-detail-block">
           <p className="goals-detail-label">Resources</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {goal.resources.map((resource) => (
-              resource.url.startsWith('/') ? (
-                <Link key={resource.label} to={resource.url} className="chip chip--accent">
+            {goal.resources.map((resource) => {
+              const resourceUrl = resolvePortfolioResourcePath(resource.url, portfolioUsername)
+              return resourceUrl.startsWith('/') ? (
+                <Link key={resource.label} to={resourceUrl} className="chip chip--accent">
                   {resource.label}
                 </Link>
               ) : (
-                <a key={resource.label} href={resource.url} target="_blank" rel="noreferrer" className="chip chip--accent">
+                <a key={resource.label} href={resourceUrl} target="_blank" rel="noreferrer" className="chip chip--accent">
                   {resource.label}
                 </a>
               )
-            ))}
+            })}
           </div>
         </section>
 
@@ -535,7 +538,26 @@ function GoalDetailsPanel({ goal, onNavigateSkill, onArchive, onPin, onEdit, onR
   )
 }
 
+function useDialogLifecycle(onClose) {
+  useEffect(() => {
+    const previouslyFocused = document.activeElement
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector('[role="dialog"] button, [role="dialog"] input, [role="dialog"] textarea')?.focus()
+    })
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', handleKeyDown)
+      previouslyFocused?.focus?.()
+    }
+  }, [onClose])
+}
+
 function GoalEditorModal({ goal, onSave, onClose }) {
+  useDialogLifecycle(onClose)
   const [form, setForm] = useState(() => ({
     title: goal?.title || '',
     category: goal?.category || 'Career',
@@ -554,7 +576,7 @@ function GoalEditorModal({ goal, onSave, onClose }) {
 
   return (
     <motion.div className="goals-modal-shell" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-      <motion.div className="goals-modal-card" initial={{ y: 18, opacity: 0, scale: 0.98 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0, scale: 0.98 }} transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }} onClick={(event) => event.stopPropagation()}>
+      <motion.div role="dialog" aria-modal="true" aria-label={goal ? `Edit ${goal.title}` : 'Add goal'} className="goals-modal-card" initial={{ y: 18, opacity: 0, scale: 0.98 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0, scale: 0.98 }} transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }} onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[rgba(214,160,89,0.18)] px-6 py-5">
           <div>
             <p className="section-eyebrow">{goal ? 'Edit Goal' : 'Add Goal'}</p>
@@ -655,6 +677,7 @@ function GoalEditorModal({ goal, onSave, onClose }) {
 }
 
 function GoalReorderModal({ goals, onSave, onClose }) {
+  useDialogLifecycle(onClose)
   const [items, setItems] = useState(() => [...goals])
 
   const moveItem = (index, direction) => {
@@ -672,7 +695,7 @@ function GoalReorderModal({ goals, onSave, onClose }) {
 
   return (
     <motion.div className="goals-modal-shell" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-      <motion.div className="goals-modal-card goals-modal-card--wide" initial={{ y: 18, opacity: 0, scale: 0.98 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0, scale: 0.98 }} transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }} onClick={(event) => event.stopPropagation()}>
+      <motion.div role="dialog" aria-modal="true" aria-label="Reorder goals" className="goals-modal-card goals-modal-card--wide" initial={{ y: 18, opacity: 0, scale: 0.98 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0, scale: 0.98 }} transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }} onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[rgba(214,160,89,0.18)] px-6 py-5">
           <div>
             <p className="section-eyebrow">Reorder Goals</p>
@@ -709,6 +732,7 @@ export function GoalsPage() {
   const navigate = useNavigate()
   const { getToken, isLoaded, isSignedIn } = useAuth()
   const [goals, setGoals] = useState([])
+  const [portfolioUsername, setPortfolioUsername] = useState('')
   const [searchParams] = useSearchParams()
   const requestedGoalId = Number(searchParams.get('goal')) || null
   const [selectedGoalId, setSelectedGoalId] = useState(requestedGoalId)
@@ -722,11 +746,15 @@ export function GoalsPage() {
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
     let cancelled = false
-    fetchGoals(getToken)
-      .then((items) => {
+    Promise.all([
+      fetchGoals(getToken),
+      authenticatedRequest('/api/profile', {}, getToken).catch(() => null),
+    ])
+      .then(([items, profile]) => {
         if (cancelled) return
         const next = Array.isArray(items) ? items : []
         setGoals(next)
+        setPortfolioUsername(profile?.username || '')
         setSelectedGoalId((current) => next.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : (current || next[0]?.id || null))
         setError('')
       })
@@ -993,6 +1021,7 @@ export function GoalsPage() {
 
         <GoalDetailsPanel
           goal={selectedGoal}
+          portfolioUsername={portfolioUsername}
           onNavigateSkill={openTechnology}
           onArchive={toggleArchiveGoal}
           onPin={togglePinGoal}

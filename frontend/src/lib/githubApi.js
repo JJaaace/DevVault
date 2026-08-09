@@ -79,48 +79,6 @@ export async function fetchGitHubRepos(username) {
   return Array.isArray(repos) ? repos : []
 }
 
-export function buildGitHubProfileDraft(profile, githubUser) {
-  const nameParts = typeof githubUser?.name === 'string' ? githubUser.name.trim().split(/\s+/) : []
-  const currentGithubUrl = profile?.githubUrl || profile?.websiteUrl || ''
-  const githubUrl = githubUser?.html_url || currentGithubUrl
-
-  return {
-    ...profile,
-    firstName: profile?.firstName || nameParts[0] || profile?.username || githubUser?.login || '',
-    lastName: profile?.lastName || nameParts.slice(1).join(' ') || '',
-    bio: githubUser?.bio || profile?.bio || '',
-    profileImageUrl: profile?.profileImageUrl || profile?.profileImage || githubUser?.avatar_url || '',
-    location: githubUser?.location || profile?.location || '',
-    websiteUrl: githubUser?.blog || profile?.websiteUrl || '',
-    githubUrl,
-  }
-}
-
-export function buildGitHubProfilePayload(profile, githubUser) {
-  const draft = buildGitHubProfileDraft(profile, githubUser)
-
-  return {
-    firstName: draft.firstName,
-    lastName: draft.lastName,
-    username: draft.username || githubUser?.login || profile?.username || '',
-    bio: draft.bio || '',
-    profileImageUrl: draft.profileImageUrl || '',
-    school: profile?.school || profile?.university || '',
-    graduationYear: profile?.graduationYear ?? '',
-    major: profile?.major || '',
-    location: draft.location || '',
-    dreamCompanies: Array.isArray(profile?.dreamCompanies) ? profile.dreamCompanies : [],
-    currentRole: profile?.currentRole || '',
-    favoriteLanguage: profile?.favoriteLanguage || '',
-    favoriteFramework: profile?.favoriteFramework || '',
-    yearsCoding: profile?.yearsCoding ?? '',
-    interests: Array.isArray(profile?.interests) ? profile.interests : [],
-    githubUrl: draft.githubUrl || '',
-    linkedinUrl: profile?.linkedinUrl || '',
-    websiteUrl: githubUser?.blog || profile?.websiteUrl || '',
-  }
-}
-
 export function buildGitHubProjectDrafts(repos = []) {
   return repos
     .filter((repo) => !repo.fork)

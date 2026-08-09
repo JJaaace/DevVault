@@ -1,5 +1,8 @@
 import { useState } from 'react'
 
+const MAX_PROFILE_IMAGE_BYTES = 7 * 1024 * 1024
+const ALLOWED_PROFILE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
+
 function listToText(value) {
   if (!value) {
     return ''
@@ -102,8 +105,15 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
       return
     }
 
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Please choose an image file.')
+    if (!ALLOWED_PROFILE_IMAGE_TYPES.has(file.type)) {
+      setUploadError('Use a PNG, JPG, JPEG, or WEBP image.')
+      event.target.value = ''
+      return
+    }
+
+    if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+      setUploadError('Profile picture must be 7MB or smaller.')
+      event.target.value = ''
       return
     }
 
@@ -119,6 +129,7 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
       setUploadError('Unable to read that image. Please try another file.')
     }
     reader.readAsDataURL(file)
+    event.target.value = ''
   }
 
   const handleRemoveImage = () => {

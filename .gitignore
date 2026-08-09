@@ -1,7 +1,14 @@
 backend/.env
 frontend/.env
+**/.env.*
+!**/.env.example
 backend/.data/
 frontend/dist/
 **/node_modules/
+*.dump
+*.backup
+*.pem
+*.key
+*.p12
+.production-smoke.json
 .DS_Store
-

@@ -8,22 +8,27 @@ export const SKILL_LEVEL_OPTIONS = [
 
 const levelMeta = {
   BEGINNER: {
+    name: 'Learning',
     label: '🌱 Learning',
     toneClass: 'text-[var(--color-text-soft)]',
   },
   ADVANCED_BEGINNER: {
+    name: 'Comfortable',
     label: '⚡ Comfortable',
     toneClass: 'text-[#d9ad74]',
   },
   INTERMEDIATE: {
+    name: 'Comfortable',
     label: '⚡ Comfortable',
     toneClass: 'text-[var(--color-brand-ink)]',
   },
   ADVANCED: {
+    name: 'Confident',
     label: '🚀 Confident',
     toneClass: 'text-[#dfb983]',
   },
   EXPERT: {
+    name: 'Advanced',
     label: '🏆 Advanced',
     toneClass: 'text-[#e58f3d]',
   },

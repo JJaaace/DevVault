@@ -5,8 +5,10 @@ import { ClerkProvider } from '@clerk/clerk-react'
 import './index.css'
 import App from './App.jsx'
 import { AppToaster } from './components/ui/AppToaster'
+import { frontendEnvironment } from './config/runtime'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
-const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+const clerkPubKey = frontendEnvironment.clerkPublishableKey
 
 export function Root() {
   const isPublicGuestRoute = typeof window !== 'undefined'
@@ -40,9 +42,9 @@ export function Root() {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <>
+    <ErrorBoundary>
       <Root />
       <AppToaster />
-    </>
+    </ErrorBoundary>
   </StrictMode>,
 )

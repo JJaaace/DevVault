@@ -190,6 +190,8 @@ function selectTechnologyBench(skills = [], profile, currentProject, limit = 8) 
 
   return [...skills]
     .sort((left, right) => {
+      const persistedFavoriteDelta = Number(Boolean(right.favorite)) - Number(Boolean(left.favorite))
+      if (persistedFavoriteDelta) return persistedFavoriteDelta
       const leftName = String(left.name || '').toLowerCase()
       const rightName = String(right.name || '').toLowerCase()
       const favoriteDelta = Number(favoriteNames.has(rightName)) - Number(favoriteNames.has(leftName))

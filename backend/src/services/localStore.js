@@ -67,6 +67,7 @@ function migrateLegacySkills(skills) {
       ...skillWithoutPercentage,
       technologyKey: typeof skill?.technologyKey === 'string' ? skill.technologyKey : String(skill?.name || '').trim().toLowerCase().replace(/\s+/g, '-'),
       experienceLevel: skill?.experienceLevel || 'BEGINNER',
+      favorite: Boolean(skill?.favorite),
       yearsExperience: safeYears,
       firstUsedYear,
       projectsBuilt: Number.isInteger(skill?.projectsBuilt) ? skill.projectsBuilt : 0,

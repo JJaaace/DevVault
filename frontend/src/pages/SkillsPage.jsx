@@ -1,18 +1,18 @@
 import { useAuth } from '@clerk/clerk-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { SkillFormModal } from '../components/SkillFormModal'
 import { SkillsEmptyState } from '../components/SkillsEmptyState'
 import { TechnologyLogo } from '../components/TechnologyLogo'
 import { fetchProjects } from '../lib/projectsApi'
 import { getSkillLevelMeta } from '../lib/skillUtils'
+import { applySavedSkill, buildSkillUpdatePayload, getGuestSkillSource } from '../lib/skillState'
 import { createSkill, deleteSkill, fetchSkills, updateSkill } from '../lib/skillsApi'
+import { invalidatePublicPortfolioCache } from '../lib/portfolioApi'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useGuestMode } from '../context/GuestModeContext'
-
-const FAVORITE_SKILL_STORAGE_KEY = 'devvault:favorite-technology'
-const DEFAULT_FAVORITE_SKILL_KEY = 'python'
+import { canonicalTechnologyKey, getCanonicalSkillKey } from '../lib/certificationTechnology'
 
 const CATEGORY_CONFIG = [
   { id: 'programming', label: 'Programming Languages', icon: '💻' },
@@ -99,14 +99,17 @@ function AnimatedCounter({ value, suffix = '' }) {
 
 function SkillsPageContent({ getToken }) {
   const { isGuestMode, portfolio, resolvePath } = useGuestMode()
+  const guestSource = getGuestSkillSource(isGuestMode, portfolio)
+  const guestProfile = guestSource.profile
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const [skills, setSkills] = useState(() => isGuestMode ? portfolio.skills || [] : [])
-  const [projects, setProjects] = useState(() => isGuestMode ? portfolio.projects || [] : [])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedSkillKey = canonicalTechnologyKey(searchParams.get('skill'))
+  const [skills, setSkills] = useState(() => guestSource.skills)
+  const [projects, setProjects] = useState(() => guestSource.projects)
   const [loading, setLoading] = useState(!isGuestMode)
   const [error, setError] = useState('')
 
-  const [search, setSearch] = useState(() => searchParams.get('technology') || '')
+  const [search, setSearch] = useState(() => searchParams.get('skill') ? '' : (searchParams.get('technology') || ''))
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [experienceFilter, setExperienceFilter] = useState('All')
   const [sortMode, setSortMode] = useState('most-projects')
@@ -119,27 +122,15 @@ function SkillsPageContent({ getToken }) {
     return initial
   })
 
-  const [favoriteSkillKey, setFavoriteSkillKey] = useState(() => {
-    if (isGuestMode) return portfolio.profile?.favoriteLanguage || portfolio.profile?.favoriteFramework || DEFAULT_FAVORITE_SKILL_KEY
-    if (typeof window === 'undefined') {
-      return DEFAULT_FAVORITE_SKILL_KEY
-    }
-
-    const stored = window.localStorage.getItem(FAVORITE_SKILL_STORAGE_KEY) || ''
-    const normalized = normalizeToken(stored)
-
-    // Migrate the old default favorite from React to Python.
-    if (!normalized || normalized === 'react') {
-      return DEFAULT_FAVORITE_SKILL_KEY
-    }
-
-    return stored
-  })
-
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [modalErrors, setModalErrors] = useState({})
+  const [highlightedSkillId, setHighlightedSkillId] = useState(null)
+  const [missingRequestedSkill, setMissingRequestedSkill] = useState(false)
+  const deepLinkTimerRef = useRef(null)
+  const scrollTimerRef = useRef(null)
+  const highlightTimerRef = useRef(null)
 
   useEffect(() => {
     if (isGuestMode) return
@@ -179,32 +170,59 @@ function SkillsPageContent({ getToken }) {
     })
   }, [skills])
 
+  useEffect(() => {
+    if (loading || !requestedSkillKey) return undefined
+    const requestedSkill = enrichedSkills.find((skill) => getCanonicalSkillKey(skill) === requestedSkillKey)
+
+    deepLinkTimerRef.current = window.setTimeout(() => {
+      if (!requestedSkill) {
+        setMissingRequestedSkill(true)
+        setHighlightedSkillId(null)
+        return
+      }
+
+      setMissingRequestedSkill(false)
+      setSearch('')
+      setCategoryFilter('All')
+      setExperienceFilter('All')
+      setExpandedCategories((current) => ({ ...current, [requestedSkill.dashboardCategoryId]: true }))
+      setHighlightedSkillId(requestedSkill.id)
+      scrollTimerRef.current = window.setTimeout(() => {
+        document.getElementById(`skill-${requestedSkill.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 90)
+      highlightTimerRef.current = window.setTimeout(() => setHighlightedSkillId(null), 3200)
+    }, 0)
+
+    return () => {
+      if (deepLinkTimerRef.current) window.clearTimeout(deepLinkTimerRef.current)
+      if (scrollTimerRef.current) window.clearTimeout(scrollTimerRef.current)
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
+    }
+  }, [enrichedSkills, loading, requestedSkillKey])
+
   const favoriteSkill = useMemo(() => {
     if (!enrichedSkills.length) {
       return null
     }
 
-    const normalized = normalizeToken(favoriteSkillKey)
-    const exact = enrichedSkills.find((skill) => normalizeToken(skill.technologyKey || skill.name) === normalized)
+    const exact = enrichedSkills.find((skill) => skill.favorite)
     if (exact) {
       return exact
     }
 
-    const pythonSkill = enrichedSkills.find((skill) => normalizeToken(skill.technologyKey || skill.name) === DEFAULT_FAVORITE_SKILL_KEY)
-    return pythonSkill || enrichedSkills[0]
-  }, [enrichedSkills, favoriteSkillKey])
-
-  useEffect(() => {
-    if (isGuestMode) return
-    if (typeof window === 'undefined') {
-      return
+    const profileFavorite = guestProfile?.favoriteLanguage || guestProfile?.favoriteFramework || ''
+    if (profileFavorite) {
+      const normalized = normalizeToken(profileFavorite)
+      const profileMatch = enrichedSkills.find((skill) => normalizeToken(skill.technologyKey || skill.name) === normalized)
+      if (profileMatch) return profileMatch
     }
 
-    window.localStorage.setItem(FAVORITE_SKILL_STORAGE_KEY, favoriteSkillKey)
-  }, [favoriteSkillKey, isGuestMode])
+    return enrichedSkills[0]
+  }, [enrichedSkills, guestProfile?.favoriteFramework, guestProfile?.favoriteLanguage])
 
   const visibleSkills = useMemo(() => {
     const term = search.trim().toLowerCase()
+    const canonicalSearchKey = canonicalTechnologyKey(term)
 
     const filtered = enrichedSkills
       .filter((skill) => {
@@ -218,6 +236,10 @@ function SkillsPageContent({ getToken }) {
       .filter((skill) => (experienceFilter === 'All' ? true : skill.dashboardLevelLabel === experienceFilter))
       .filter((skill) => {
         if (!term) {
+          return true
+        }
+
+        if (getCanonicalSkillKey(skill) === canonicalSearchKey) {
           return true
         }
 
@@ -306,11 +328,6 @@ function SkillsPageContent({ getToken }) {
     ? Math.max(new Date().getFullYear() - Math.min(...visibleSkills.map((skill) => Number(skill.firstUsedYear || new Date().getFullYear()))), 0)
     : 0
 
-  const refreshSkills = async () => {
-    const nextSkills = await fetchSkills(getToken)
-    setSkills(Array.isArray(nextSkills) ? nextSkills : [])
-  }
-
   const parseErrorPayload = (message) => {
     if (!message) {
       return { message: 'Unable to save skill.' }
@@ -355,14 +372,15 @@ function SkillsPageContent({ getToken }) {
     setModalErrors({})
 
     try {
-      if (editingSkill) {
-        await updateSkill(editingSkill.id, formData, getToken)
-      } else {
-        await createSkill(formData, getToken)
-      }
+      const savedSkill = editingSkill
+        ? await updateSkill(editingSkill.id, formData, getToken)
+        : await createSkill(formData, getToken)
 
-      await refreshSkills()
-      closeModal()
+      setSkills((current) => applySavedSkill(current, savedSkill))
+      invalidatePublicPortfolioCache()
+      setIsModalOpen(false)
+      setEditingSkill(null)
+      setModalErrors({})
       toast.success(editingSkill ? 'Technology updated.' : 'Technology added.')
     } catch (submitError) {
       if (submitError?.details && typeof submitError.details === 'object') {
@@ -395,7 +413,8 @@ function SkillsPageContent({ getToken }) {
               toast.dismiss(id)
               try {
                 await deleteSkill(skill.id, getToken)
-                await refreshSkills()
+                setSkills((current) => current.filter((item) => item.id !== skill.id))
+                invalidatePublicPortfolioCache()
                 toast.success(`${skill.name} deleted.`)
               } catch (deleteError) {
                 toast.error(deleteError.message || 'Unable to delete skill.')
@@ -413,11 +432,14 @@ function SkillsPageContent({ getToken }) {
     ), { duration: Infinity })
   }
 
-  const setFavoriteTechnology = (skill) => {
-    const next = skill.technologyKey || skill.name
-    setFavoriteSkillKey(next)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(FAVORITE_SKILL_STORAGE_KEY, next)
+  const setFavoriteTechnology = async (skill) => {
+    try {
+      const savedSkill = await updateSkill(skill.id, buildSkillUpdatePayload(skill, { favorite: true }), getToken)
+      setSkills((current) => applySavedSkill(current, savedSkill))
+      invalidatePublicPortfolioCache()
+      toast.success(`${skill.name} is now your favorite technology.`)
+    } catch (favoriteError) {
+      toast.error(favoriteError.message || 'Unable to update favorite technology.')
     }
   }
 
@@ -426,6 +448,14 @@ function SkillsPageContent({ getToken }) {
       ...current,
       [categoryId]: !current[categoryId],
     }))
+  }
+
+  const clearFilters = () => {
+    setSearch('')
+    setCategoryFilter('All')
+    setExperienceFilter('All')
+    setMissingRequestedSkill(false)
+    setSearchParams({})
   }
 
   if (loading) {
@@ -479,6 +509,13 @@ function SkillsPageContent({ getToken }) {
       {error ? (
         <div className="widget-card border border-[rgba(185,56,28,0.3)] bg-[rgba(74,31,21,0.86)] p-4 text-sm text-[#f6c9bb]">
           {error}
+        </div>
+      ) : null}
+
+      {missingRequestedSkill ? (
+        <div className="skills-deep-link-notice" role="status">
+          <div><strong>Technology topic not tracked as a core Skill</strong><span>Showing the complete Skills workspace instead.</span></div>
+          <button type="button" onClick={clearFilters}>View all skills</button>
         </div>
       ) : null}
 
@@ -583,7 +620,8 @@ function SkillsPageContent({ getToken }) {
                           {categorySkills.map((skill) => (
                             <motion.article
                               key={skill.id}
-                              className={`skills-tech-card ${favoriteSkill && favoriteSkill.id === skill.id ? 'skills-tech-card--favorite' : ''}`.trim()}
+                              id={`skill-${skill.id}`}
+                              className={`skills-tech-card ${favoriteSkill && favoriteSkill.id === skill.id ? 'skills-tech-card--favorite' : ''} ${highlightedSkillId === skill.id ? 'skills-tech-card--linked' : ''}`.trim()}
                               whileHover={{ y: -6, scale: 1.01, rotateX: 1.6, rotateY: -1.6 }}
                               transition={{ type: 'spring', stiffness: 260, damping: 18 }}
                             >
@@ -671,8 +709,16 @@ function SkillsPageContent({ getToken }) {
             )
           })}
         </section>
+      ) : skills.length === 0 ? (
+        isGuestMode ? (
+          <div className="skills-filter-empty"><strong>No public technologies yet</strong><span>This read-only portfolio does not currently include Skill records.</span></div>
+        ) : <SkillsEmptyState onCreate={openCreateModal} />
       ) : (
-        <SkillsEmptyState onCreate={openCreateModal} />
+        <div className="skills-filter-empty">
+          <strong>No matching technology</strong>
+          <span>Try another search or clear the active filters.</span>
+          <button type="button" onClick={clearFilters}>Clear filters</button>
+        </div>
       )}
 
       <section className="surface-card surface-card--strong skills-timeline-shell p-5 md:p-6">

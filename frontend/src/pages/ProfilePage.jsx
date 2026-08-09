@@ -91,8 +91,20 @@ export function ProfilePage() {
       }
 
       const method = serverProfileStatus === 'exists' ? 'PUT' : 'POST'
-      const response = await authenticatedRequest('/api/profile', { method, body: JSON.stringify(formData) }, getToken)
-      const savedProfile = response
+      const previousImage = profile?.profileImageUrl || ''
+      const nextImage = formData.profileImageUrl || ''
+      const profilePayload = method === 'PUT'
+        ? Object.fromEntries(Object.entries(formData).filter(([field]) => field !== 'profileImageUrl'))
+        : formData
+      let savedProfile = await authenticatedRequest('/api/profile', { method, body: JSON.stringify(profilePayload) }, getToken)
+
+      if (method === 'PUT' && nextImage !== previousImage) {
+        savedProfile = await authenticatedRequest('/api/profile/image', {
+          method: 'PATCH',
+          body: JSON.stringify({ profileImageUrl: nextImage }),
+        }, getToken)
+      }
+
       setProfile(savedProfile)
       saveStoredProfile(savedProfile)
       setServerProfileStatus('exists')
@@ -161,14 +173,16 @@ export function ProfilePage() {
           </div>
         ) : null}
 
-        <ProfileForm
-          key={profile?.id || profile?.updatedAt || profile?.savedAt || profile?.username || 'new-profile'}
-          profile={profile}
-          onSubmit={handleSubmit}
-          onCancel={() => navigate('/dashboard')}
-          submitting={submitting}
-          errors={errors}
-        />
+        {!loading ? (
+          <ProfileForm
+            key={`${profile?.id || profile?.username || 'new-profile'}:${profile?.updatedAt || profile?.savedAt || 'new'}:${profile?.profileImageUrl ? 'with-image' : 'without-image'}`}
+            profile={profile}
+            onSubmit={handleSubmit}
+            onCancel={() => navigate('/dashboard')}
+            submitting={submitting}
+            errors={errors}
+          />
+        ) : null}
       </div>
     </div>
   )

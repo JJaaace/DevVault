@@ -2,6 +2,9 @@
   "name": "devvault",
   "private": true,
   "version": "0.0.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "PORT=5001 npm --prefix backend run dev & VITE_API_BASE_URL=http://localhost:5001 npm --prefix frontend run dev -- --host 127.0.0.1 --port 5176",
     "dev:backend": "PORT=5001 npm --prefix backend run dev",
@@ -9,6 +12,14 @@
     "build": "npm --prefix frontend run build",
     "lint": "npm --prefix frontend run lint",
     "test": "npm --prefix backend test && npm --prefix frontend test",
-    "verify:data": "node backend/scripts/verifyWorkspaceIntegrity.js"
+    "verify:data": "NODE_ENV=development node backend/scripts/verifyWorkspaceIntegrity.js",
+    "db:production:check": "npm --prefix backend run db:production:check",
+    "db:verify": "npm --prefix backend run db:verify --",
+    "db:archive:check": "npm --prefix backend run db:archive:check --",
+    "ownership:preview": "npm --prefix backend run ownership:preview --",
+    "ownership:apply": "npm --prefix backend run ownership:apply --",
+    "production:smoke": "node scripts/productionSmoke.mjs",
+    "security:policy": "node scripts/repositoryPolicyCheck.mjs",
+    "deploy:preflight": "node scripts/deployPreflight.mjs"
   }
 }

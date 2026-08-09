@@ -1,10 +1,11 @@
 import { useAuth } from '@clerk/clerk-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DevVaultLogo } from '../components/branding/DevVaultLogo'
 import { VaultParticleField } from '../components/insideVault/VaultParticleField'
 import { VaultPortrait } from '../components/insideVault/VaultPortrait'
 import { authenticatedRequest } from '../lib/api'
+import { getSkillLevelMeta } from '../lib/skillUtils'
 import { useGuestMode } from '../context/GuestModeContext'
 
 const introParagraph = `I'm a Computer Information Systems student at The Ohio State University and someone who genuinely enjoys building software that solves real problems.
@@ -14,8 +15,6 @@ Programming started as curiosity, but over time it became something I genuinely 
 DevVault isn't just my portfolio.
 
 It's where I document my growth, organize my projects, and continue pushing myself to become a better engineer.`
-
-const VAULT_PORTRAIT_STORAGE_KEY = 'devvault:inside-vault:portrait'
 
 const interestItems = [
   {
@@ -50,18 +49,6 @@ const interestItems = [
     title: 'AWS',
     detail: 'I am currently learning cloud technologies and excited to build applications that scale.',
   },
-]
-
-const technologyItems = [
-  { name: 'React', detail: 'I love how quickly I can turn ideas into polished interfaces.' },
-  { name: 'Java', detail: 'The language that taught me how to think like a programmer.' },
-  { name: 'Python', detail: 'My favorite language for experimenting with new ideas.' },
-  { name: 'Node.js', detail: 'I enjoy building complete applications from frontend to backend.' },
-  { name: 'PostgreSQL', detail: 'I trust it for structuring data cleanly and querying with confidence.' },
-  { name: 'Prisma', detail: 'It helps me move fast while keeping data models readable and safe.' },
-  { name: 'Git', detail: 'Version control keeps my process intentional and collaborative.' },
-  { name: 'GitHub', detail: 'It is where projects become transparent, shareable, and easier to improve.' },
-  { name: 'AWS', detail: 'I am excited to keep learning cloud architecture and scalable deployment patterns.' },
 ]
 
 const philosophyItems = [
@@ -135,7 +122,6 @@ function InsideVaultPageContent({ getToken }) {
   const [activeInterest, setActiveInterest] = useState('')
   const [logoClickTimes, setLogoClickTimes] = useState([])
   const [showEasterEgg, setShowEasterEgg] = useState(false)
-  const portraitMigrationAttemptedRef = useRef(false)
   useEffect(() => {
     if (isGuestMode) return undefined
     let cancelled = false
@@ -168,28 +154,6 @@ function InsideVaultPageContent({ getToken }) {
     return savedProfile
   }, [getToken, isGuestMode, workspace.profile])
 
-  useEffect(() => {
-    const profileImageUrl = workspace.profile?.profileImageUrl || ''
-    const canMigrateBrowserPortrait = !profileImageUrl || /^https:\/\/avatars\.githubusercontent\.com\//i.test(profileImageUrl)
-
-    if (isGuestMode || !workspace.profile || !canMigrateBrowserPortrait || portraitMigrationAttemptedRef.current || typeof window === 'undefined') {
-      return
-    }
-
-    const cachedPortrait = window.localStorage.getItem(VAULT_PORTRAIT_STORAGE_KEY) || ''
-    if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(cachedPortrait)) {
-      return
-    }
-
-    portraitMigrationAttemptedRef.current = true
-    const timeoutId = window.setTimeout(() => {
-      saveProfileImage(cachedPortrait).catch(() => {
-        portraitMigrationAttemptedRef.current = false
-      })
-    }, 0)
-    return () => window.clearTimeout(timeoutId)
-  }, [isGuestMode, saveProfileImage, workspace.profile])
-
   const dynamicInterests = useMemo(() => {
     const values = workspace.profile?.interests || []
     if (!values.length) return interestItems
@@ -200,12 +164,10 @@ function InsideVaultPageContent({ getToken }) {
     }))
   }, [workspace.profile])
 
-  const dynamicTechnologies = useMemo(() => workspace.skills.length
-    ? [...workspace.skills]
-      .sort((left, right) => Number(right.projectsBuilt || 0) - Number(left.projectsBuilt || 0) || Number(right.yearsExperience || 0) - Number(left.yearsExperience || 0))
+  const dynamicTechnologies = useMemo(() => [...workspace.skills]
+      .sort((left, right) => Number(Boolean(right.favorite)) - Number(Boolean(left.favorite)) || Number(right.projectsBuilt || 0) - Number(left.projectsBuilt || 0) || Number(right.yearsExperience || 0) - Number(left.yearsExperience || 0))
       .slice(0, 9)
-      .map((skill) => ({ name: skill.name, detail: skill.notes || `${skill.experienceLevel.replace(/_/g, ' ').toLowerCase()} experience across ${skill.projectsBuilt || 0} linked project${skill.projectsBuilt === 1 ? '' : 's'}.` }))
-    : technologyItems, [workspace.skills])
+      .map((skill) => ({ name: skill.name, detail: skill.notes || `${getSkillLevelMeta(skill.experienceLevel).name} experience across ${skill.projectsBuilt || 0} linked project${skill.projectsBuilt === 1 ? '' : 's'}.` })), [workspace.skills])
 
   const dynamicTimeline = useMemo(() => {
     const byYear = new Map()
@@ -286,7 +248,6 @@ function InsideVaultPageContent({ getToken }) {
                 src={profile?.profileImageUrl || '/profile/profile.jpg'}
                 alt={`Portrait of ${profile?.firstName || 'the developer'}`}
                 allowLocalOverride={!isGuestMode}
-                storageKey={VAULT_PORTRAIT_STORAGE_KEY}
                 onImageChange={isGuestMode ? undefined : saveProfileImage}
               />
             </motion.div>
@@ -382,6 +343,7 @@ function InsideVaultPageContent({ getToken }) {
                 <p>{tech.detail}</p>
               </motion.article>
             ))}
+            {!dynamicTechnologies.length ? <p className="text-sm text-[var(--color-text-soft)]">Tracked Skills will appear here.</p> : null}
           </div>
         </section>
 

@@ -53,7 +53,7 @@ function buildSkillSummary(skill) {
   }
 
   if (skill.experienceLevel) {
-    parts.push(skill.experienceLevel.toLowerCase())
+    parts.push(getSkillLevelMeta(skill.experienceLevel).name)
   }
 
   if (skill.yearsExperience !== null && skill.yearsExperience !== undefined && skill.yearsExperience !== '') {
@@ -162,3 +162,4 @@ export function downloadResumeMarkdown(profile, projects = [], skills = []) {
 
   return fileName
 }
+import { getSkillLevelMeta } from './skillUtils'

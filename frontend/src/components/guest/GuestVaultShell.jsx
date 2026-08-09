@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
 import { DevVaultLogo } from '../branding/DevVaultLogo'
 import { GuestModeProvider } from '../../context/GuestModeContext'
 import { fetchPublicPortfolio } from '../../lib/portfolioApi'
 import '../../guest-mode.css'
 
-function VaultState({ title, message }) {
+function VaultState({ title, message, retry }) {
   return (
     <div className="guest-state">
       <DevVaultLogo compact size="lg" />
       <p>Guest access</p>
       <h1>{title}</h1>
       <span>{message}</span>
+      {retry ? <button type="button" onClick={retry} className="guest-button guest-button--primary">Try again</button> : null}
     </div>
   )
 }
@@ -45,7 +46,7 @@ function GuestVaultNavigation({ profile }) {
         <div className="guest-vault-actions">
           {profile.githubUrl ? <a href={profile.githubUrl} target="_blank" rel="noreferrer">GitHub</a> : null}
           {profile.linkedinUrl ? <a href={profile.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn</a> : null}
-          <Link to={`/portfolio/${profile.username}`} className="button-secondary px-3 py-2 text-xs">Exit Guest Mode</Link>
+          <Link to={`/portfolio/${profile.username}`} className="guest-lock-vault px-3 py-2 text-xs">Lock the Vault</Link>
         </div>
       </div>
     </header>
@@ -54,25 +55,37 @@ function GuestVaultNavigation({ profile }) {
 
 export function GuestVaultShell() {
   const { username } = useParams()
+  const location = useLocation()
   const [portfolio, setPortfolio] = useState(null)
   const [error, setError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
-    fetchPublicPortfolio(username)
+    fetchPublicPortfolio(username, { force: reloadKey > 0 })
       .then((data) => { if (!cancelled) setPortfolio(data) })
-      .catch((requestError) => { if (!cancelled) setError(requestError.message || 'Unable to open this Vault.') })
+      .catch((requestError) => { if (!cancelled) setError(requestError || new Error('Unable to open this Vault.')) })
     return () => { cancelled = true }
-  }, [username])
+  }, [reloadKey, username])
 
-  if (error) return <VaultState title="Vault unavailable" message={error} />
+  useEffect(() => {
+    if (!portfolio?.profile) return
+    const section = location.pathname.split('/').filter(Boolean).at(-1)
+    const sectionTitle = {
+      about: 'Inside the Vault', projects: 'Projects', skills: 'Skills',
+      certifications: 'Credentials', resume: 'Resume', vault: 'DevVault',
+    }[section] || 'DevVault'
+    document.title = `${sectionTitle} | ${portfolio.profile.firstName} ${portfolio.profile.lastName}`
+  }, [location.pathname, portfolio])
+
+  if (error) return <VaultState title={error.status === 404 ? 'Portfolio not found' : 'Vault unavailable'} message={error.message || error} retry={() => { setError(''); setReloadKey((value) => value + 1) }} />
   if (!portfolio?.profile) return <VaultState title="Opening Guest Mode" message="Preparing the read-only workspace…" />
 
   return (
     <GuestModeProvider portfolio={portfolio}>
       <div className="guest-vault-shell">
         <GuestVaultNavigation profile={portfolio.profile} />
-        <main className="guest-vault-main">
+        <main id="main-content" className="guest-vault-main">
           <Outlet />
         </main>
       </div>

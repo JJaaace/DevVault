@@ -19,6 +19,17 @@ const GITHUB_PROJECT_METADATA_FIELDS = Object.freeze([
   'githubArchivedAt',
 ])
 
+function serializeOwnerProject(project) {
+  if (!project) return null
+  const embedded = typeof project.bannerImageUrl === 'string' && /^data:image\//i.test(project.bannerImageUrl)
+  return {
+    ...project,
+    bannerImageUrl: embedded
+      ? `/api/projects/${project.id}/artwork?v=${new Date(project.updatedAt).getTime() || Date.now()}`
+      : project.bannerImageUrl,
+  }
+}
+
 function createServiceError(statusCode, message, details) {
   const error = new Error(message)
   error.statusCode = statusCode
@@ -119,9 +130,17 @@ function validateImageReference(value, fieldName, errors) {
 
   const isHttpUrl = /^https?:\/\//i.test(normalized)
   const isLocalAssetPath = normalized.startsWith('/')
-  const isDataOrBlob = /^(data:|blob:)/i.test(normalized)
+  const isDataImage = /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(normalized)
 
-  if (!isHttpUrl && !isLocalAssetPath && !isDataOrBlob) {
+  if (normalized.startsWith('blob:')) {
+    errors[fieldName] = `${fieldName} cannot use a temporary browser blob URL.`
+  } else if (normalized.startsWith('data:') && !isDataImage) {
+    errors[fieldName] = `${fieldName} must contain a supported image upload.`
+  } else if (isDataImage && normalized.length > 8 * 1024 * 1024) {
+    errors[fieldName] = `${fieldName} must be 5 MB or smaller.`
+  } else if (isLocalAssetPath && normalized.startsWith('/api/')) {
+    errors[fieldName] = `${fieldName} cannot reference a temporary API media route.`
+  } else if (!isHttpUrl && !isLocalAssetPath && !isDataImage) {
     errors[fieldName] = `${fieldName} must be an http(s) URL or a local asset path starting with /.`
   }
 }
@@ -238,7 +257,6 @@ async function ensureOwnerUser(clerkUserId) {
 
 async function listProjects(clerkUserId, { publicOnly = false } = {}) {
   if (isPostgresMode()) {
-    await ensureOwnerUser(clerkUserId)
     return prisma.project.findMany({
       where: { ownerClerkUserId: clerkUserId, ...(publicOnly ? { publicVisible: true } : {}) },
       orderBy: [
@@ -269,7 +287,6 @@ async function getProjectById(clerkUserId, projectId) {
   }
 
   if (isPostgresMode()) {
-    await ensureOwnerUser(clerkUserId)
     const project = await prisma.project.findFirst({
       where: { id, ownerClerkUserId: clerkUserId },
     })
@@ -343,7 +360,6 @@ async function updateProject(clerkUserId, projectId, payload) {
   }
 
   if (isPostgresMode()) {
-    await ensureOwnerUser(clerkUserId)
     const existing = await prisma.project.findFirst({
       where: { id, ownerClerkUserId: clerkUserId },
     })
@@ -432,7 +448,6 @@ async function updateGitHubProjectMetadata(clerkUserId, projectId, payload) {
   }
 
   if (isPostgresMode()) {
-    await ensureOwnerUser(clerkUserId)
     const existing = await prisma.project.findFirst({
       where: { id, ownerClerkUserId: clerkUserId },
       select: { id: true },
@@ -459,7 +474,6 @@ async function deleteProject(clerkUserId, projectId) {
   }
 
   if (isPostgresMode()) {
-    await ensureOwnerUser(clerkUserId)
     const existing = await prisma.project.findFirst({
       where: { id, ownerClerkUserId: clerkUserId },
     })
@@ -489,6 +503,7 @@ module.exports = {
   createProject,
   updateProject,
   updateGitHubProjectMetadata,
+  serializeOwnerProject,
   deleteProject,
   __test: { normalizeGitHubMetadata },
 }

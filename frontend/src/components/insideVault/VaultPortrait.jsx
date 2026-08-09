@@ -7,7 +7,6 @@ const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'im
 export function VaultPortrait({
   src = '/profile/profile.jpg',
   alt = 'Jace Joseph portrait',
-  storageKey = 'devvault:inside-vault:portrait',
   allowLocalOverride = false,
   onImageChange,
 }) {
@@ -94,9 +93,6 @@ export function VaultPortrait({
         setFailedSrc('')
         setUploadError('')
 
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(storageKey, nextSrc)
-        }
       } catch (error) {
         setUploadError(error.message || 'Unable to save this profile picture. Please try again.')
       } finally {

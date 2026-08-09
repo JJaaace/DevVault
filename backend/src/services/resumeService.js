@@ -6,6 +6,7 @@ const { isPostgresMode } = require('../config/persistence')
 const DATA_DIR = path.join(__dirname, '..', '..', '.data')
 const RESUME_ROOT_DIR = path.join(DATA_DIR, 'resumes')
 const METADATA_PATH = path.join(DATA_DIR, 'resume-metadata.json')
+const MAX_RESUME_BYTES = 12 * 1024 * 1024
 
 function createServiceError(statusCode, message, details) {
   const error = new Error(message)
@@ -57,6 +58,10 @@ function parsePdfDataUrl(dataUrl) {
 
   if (!buffer.length || buffer.slice(0, 4).toString('utf8') !== '%PDF') {
     throw createServiceError(400, 'Uploaded file is not a valid PDF.')
+  }
+
+  if (buffer.length > MAX_RESUME_BYTES) {
+    throw createServiceError(400, 'Resume must be 12 MB or smaller.')
   }
 
   return buffer

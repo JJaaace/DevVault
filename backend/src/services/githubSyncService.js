@@ -3,6 +3,8 @@ const { prisma } = require('../db/prisma')
 const { isPostgresMode } = require('../config/persistence')
 const { listProjects, updateGitHubProjectMetadata } = require('./projectService')
 const { getLocalStore } = require('./localStore')
+const { environment } = require('../config/environment')
+const { logger } = require('../utils/logger')
 
 const syncJobs = new Map()
 const MAX_FINISHED_SYNC_JOBS = 200
@@ -36,7 +38,7 @@ function normalizeGitHubUsername(value) {
 }
 
 function getGitHubToken() {
-  return process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_ACCESS_TOKEN || ''
+  return environment.githubToken
 }
 
 function getGitHubHeaders(token) {
@@ -48,7 +50,17 @@ function getGitHubHeaders(token) {
 }
 
 async function fetchGitHubJson(url, { token, step } = {}) {
-  const response = await fetch(url, { headers: getGitHubHeaders(token) })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 12000)
+  let response
+  try {
+    response = await fetch(url, { headers: getGitHubHeaders(token), signal: controller.signal })
+  } catch (error) {
+    if (error?.name === 'AbortError') throw createSyncError(504, `GitHub request timed out${step ? ` while ${step}` : ''}.`)
+    throw createSyncError(502, `GitHub is unavailable${step ? ` while ${step}` : ''}.`)
+  } finally {
+    clearTimeout(timeout)
+  }
   const contentType = response.headers.get('content-type') || ''
   const rawBody = await response.text()
 
@@ -309,6 +321,11 @@ async function runGitHubSync(syncId) {
       error: null,
     })
   } catch (error) {
+    logger.warn('github.sync.failed', {
+      syncId,
+      statusCode: error.statusCode,
+      message: error.message,
+    })
     updateJob(syncId, {
       status: 'failed',
       progress: Math.max(syncJobs.get(syncId)?.progress || 0, 5),

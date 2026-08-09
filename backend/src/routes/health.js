@@ -5,17 +5,19 @@ const { persistenceMode, isPostgresMode } = require('../config/persistence')
 
 const router = express.Router()
 
-router.get('/', async (req, res, next) => {
+router.get('/health', (req, res) => sendSuccess(res, { status: 'ok' }))
+
+router.get('/ready', async (req, res, next) => {
   try {
     if (isPostgresMode()) await prisma.$queryRaw`SELECT 1`
     return sendSuccess(res, {
-      status: 'ok',
-      persistence: persistenceMode,
+      status: 'ready',
       database: isPostgresMode() ? 'reachable' : 'local-development',
-      timestamp: new Date().toISOString(),
+      persistence: persistenceMode,
     })
   } catch (error) {
     error.statusCode = 503
+    error.code = 'NOT_READY'
     return next(error)
   }
 })

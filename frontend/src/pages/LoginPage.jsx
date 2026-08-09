@@ -9,7 +9,7 @@ export function LoginPage() {
         <p className="mb-6 mt-2 text-sm text-[var(--color-text-soft)]">
           Sign in to continue building your DevVault profile.
         </p>
-        <SignIn routing="path" path="/login" signUpUrl="/signup" appearance={clerkAppearance} />
+        <SignIn routing="path" path="/login" signUpUrl="/signup" fallbackRedirectUrl="/dashboard" appearance={clerkAppearance} />
       </div>
     </div>
   )

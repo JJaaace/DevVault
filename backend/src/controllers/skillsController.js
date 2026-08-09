@@ -9,6 +9,7 @@ const { sendSuccess, sendCreated, sendNoContent, sendError } = require('../utils
 
 async function getSkills(req, res) {
   try {
+    res.set('Cache-Control', 'no-store')
     const skills = await listSkills(req.auth.userId)
     return sendSuccess(res, skills)
   } catch (error) {
@@ -18,6 +19,7 @@ async function getSkills(req, res) {
 
 async function getSkill(req, res) {
   try {
+    res.set('Cache-Control', 'no-store')
     const skill = await getSkillById(req.auth.userId, req.params.skillId)
     return sendSuccess(res, skill)
   } catch (error) {
@@ -27,6 +29,7 @@ async function getSkill(req, res) {
 
 async function createSkillHandler(req, res) {
   try {
+    res.set('Cache-Control', 'no-store')
     const skill = await createSkill(req.auth.userId, req.body)
     return sendCreated(res, skill)
   } catch (error) {
@@ -36,6 +39,7 @@ async function createSkillHandler(req, res) {
 
 async function updateSkillHandler(req, res) {
   try {
+    res.set('Cache-Control', 'no-store')
     const skill = await updateSkill(req.auth.userId, req.params.skillId, req.body)
     return sendSuccess(res, skill)
   } catch (error) {

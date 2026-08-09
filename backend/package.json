@@ -5,8 +5,23 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "node src/app.js",
-    "test": "NODE_ENV=test node --test"
+    "dev": "NODE_ENV=development node src/app.js",
+    "test": "NODE_ENV=test node --test",
+    "test:security": "NODE_ENV=test node --test test/security-boundaries.test.js",
+    "test:github-boundary": "NODE_ENV=test node --test test/github-project-sync-boundary.test.js",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "prisma:migrate:status": "prisma migrate status",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "db:production:check": "NODE_ENV=development node scripts/databaseCheck.js --mode=production-preflight",
+    "db:verify": "NODE_ENV=development node scripts/databaseCheck.js --mode=integrity-verification",
+    "db:archive:check": "node scripts/checkDataArchive.js",
+    "ownership:preview": "NODE_ENV=development node scripts/reassignClerkOwnership.js",
+    "ownership:apply": "NODE_ENV=development node scripts/reassignClerkOwnership.js --apply",
+    "postinstall": "npm run prisma:generate"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   },
   "keywords": [],
   "author": "",
@@ -15,11 +30,11 @@
   "dependencies": {
     "@clerk/express": "^2.1.44",
     "@prisma/adapter-pg": "^7.9.0",
-    "@prisma/client": "^7.9.0",
+    "@prisma/client": "^7.9.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pg": "^8.22.0",
-    "prisma": "^7.9.0"
+    "prisma": "^7.9.1"
   }
 }

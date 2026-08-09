@@ -1,4 +1,6 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '' : 'http://localhost:5001')
+import { frontendEnvironment } from '../config/runtime'
+
+const API_BASE_URL = frontendEnvironment.apiBaseUrl
 const DEFAULT_TIMEOUT_MS = 12000
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504])
 
@@ -48,12 +50,26 @@ function withJitter(baseDelayMs) {
   return baseDelayMs + jitter
 }
 
+export function getApiAssetUrl(value) {
+  if (!value || /^(data:|blob:|https?:)/i.test(value)) return value || ''
+  return `${API_BASE_URL}${value.startsWith('/') ? value : `/${value}`}`
+}
+
+function normalizeProfileMedia(value) {
+  if (Array.isArray(value)) return value.map(normalizeProfileMedia)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    ['profileImageUrl', 'bannerImageUrl'].includes(key) ? getApiAssetUrl(child) : normalizeProfileMedia(child),
+  ]))
+}
+
 function normalizeSuccessPayload(parsedBody) {
   if (parsedBody && typeof parsedBody === 'object' && 'success' in parsedBody) {
-    return parsedBody.success ? parsedBody.data : parsedBody
+    return parsedBody.success ? normalizeProfileMedia(parsedBody.data) : parsedBody
   }
 
-  return parsedBody
+  return normalizeProfileMedia(parsedBody)
 }
 
 function parseResponseBody(rawBody, contentType) {
@@ -62,7 +78,7 @@ function parseResponseBody(rawBody, contentType) {
   }
 
   if (contentType && contentType.includes('application/json')) {
-    return JSON.parse(rawBody)
+    try { return JSON.parse(rawBody) } catch { return rawBody }
   }
 
   return rawBody
@@ -126,7 +142,8 @@ async function executeRequest(path, options = {}, token) {
 }
 
 async function request(path, options = {}, getToken) {
-  const retryCount = Number.isInteger(options.retryCount) ? options.retryCount : 1
+  const method = String(options.method || 'GET').toUpperCase()
+  const retryCount = Number.isInteger(options.retryCount) ? options.retryCount : (['GET', 'HEAD'].includes(method) ? 1 : 0)
   const retryDelayMs = Number.isInteger(options.retryDelayMs) ? options.retryDelayMs : 280
   const token = getToken ? await getToken() : null
 
@@ -139,6 +156,17 @@ async function request(path, options = {}, getToken) {
         (isRetryableNetworkError(error) || isRetryableResponse(error.status))
 
       if (!shouldRetry) {
+        if (isRetryableNetworkError(error)) {
+          throw createApiError({
+            message: error.name === 'AbortError'
+              ? 'DevVault took too long to respond. Please try again.'
+              : 'DevVault cannot reach the API right now. Please check your connection and try again.',
+            status: 0,
+            code: error.name === 'AbortError' ? 'REQUEST_TIMEOUT' : 'API_UNAVAILABLE',
+            path,
+            method,
+          })
+        }
         throw error
       }
 

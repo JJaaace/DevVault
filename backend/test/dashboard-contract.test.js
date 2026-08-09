@@ -85,8 +85,9 @@ test('read-only owner and public APIs expose the migrated workspace safely', asy
     return body.data
   }
 
-  const [health, projects, skills, goals, certifications, dashboard, portfolio, portfolioOverview] = await Promise.all([
+  const [health, readiness, projects, skills, goals, certifications, dashboard, portfolio, portfolioOverview] = await Promise.all([
     get('/health'),
+    get('/ready'),
     get('/api/projects'),
     get('/api/skills'),
     get('/api/goals'),
@@ -96,7 +97,8 @@ test('read-only owner and public APIs expose the migrated workspace safely', asy
     get('/api/public/portfolio/JJaaace/overview'),
   ])
 
-  assert.equal(health.database, 'reachable')
+  assert.equal(health.status, 'ok')
+  assert.equal(readiness.database, 'reachable')
   assert.equal(dashboard.workspace.projects.length, projects.length)
   assert.equal(dashboard.workspace.skills.length, skills.length)
   assert.equal(dashboard.workspace.goals.length, goals.length)
@@ -112,6 +114,10 @@ test('read-only owner and public APIs expose the migrated workspace safely', asy
   assert.equal(dashboard.commandDeck.focusGoals.every((goal) => goal.status === 'current' || goal.status === 'future'), true)
   assert.equal(dashboard.commandDeck.credentialSpotlight.learning.status, 'in-progress')
   assert.equal(dashboard.commandDeck.technologyBench.length, Math.min(skills.length, 8))
+  const favoriteSkills = skills.filter((skill) => skill.favorite)
+  assert.equal(favoriteSkills.length, 1)
+  assert.equal(dashboard.workspace.skills.find((skill) => skill.favorite)?.id, favoriteSkills[0].id)
+  assert.equal(portfolio.skills.find((skill) => skill.favorite)?.id, favoriteSkills[0].id)
   assert.equal(portfolio.profile.username, 'JJaaace')
   assert.equal(portfolioOverview.profile.username, portfolio.profile.username)
   assert.equal('clerkUserId' in portfolio.profile, false)

@@ -9,7 +9,7 @@ export function SignupPage() {
         <p className="mb-6 mt-2 text-sm text-[var(--color-text-soft)]">
           Start your developer portfolio in just a few steps.
         </p>
-        <SignUp routing="path" path="/signup" signInUrl="/login" appearance={clerkAppearance} />
+        <SignUp routing="path" path="/signup" signInUrl="/login" fallbackRedirectUrl="/dashboard" appearance={clerkAppearance} />
       </div>
     </div>
   )

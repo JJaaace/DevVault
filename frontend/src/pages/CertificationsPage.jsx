@@ -10,18 +10,14 @@ import {
   fetchCertificationAsset,
   fetchCertificationRoadmap,
   fetchCertifications,
-  importLegacyCertifications,
   reorderCertifications,
   setFeaturedCertifications,
   updateCertification,
   updateCertificationRoadmap,
 } from '../lib/certificationsApi'
+import { fetchSkills } from '../lib/skillsApi'
+import { getCanonicalSkillKey, resolveCertificationTechnology } from '../lib/certificationTechnology'
 import { useGuestMode } from '../context/GuestModeContext'
-
-const CERTIFICATIONS_STORAGE_KEY = 'devvault.certifications.collection.v2'
-const CERTIFICATIONS_PINNED_STORAGE_KEY = 'devvault.certifications.pinned.v2'
-const CERTIFICATIONS_ROADMAP_STORAGE_KEY = 'devvault.certifications.roadmap.v2'
-const CERTIFICATIONS_POSTGRES_IMPORT_KEY = 'devvault.certifications.postgres-import.v1'
 
 // Historical one-time migration snapshots. Application state comes only from PostgreSQL APIs.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -276,6 +272,24 @@ const statusMeta = {
   },
 }
 
+function useDialogLifecycle(onClose) {
+  useEffect(() => {
+    const previouslyFocused = document.activeElement
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector('[role="dialog"] button, [role="dialog"] input, [role="dialog"] textarea')?.focus()
+    })
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', handleKeyDown)
+      previouslyFocused?.focus?.()
+    }
+  }, [onClose])
+}
+
 function formatDate(value) {
   if (!value) {
     return 'N/A'
@@ -361,23 +375,8 @@ function resolveCertificationPreviewUrl(cert, previewUrls) {
   return previewUrls[cert.id] || null
 }
 
-function loadPersistedJson(key) {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) {
-      return null
-    }
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-
 function CertReorderModal({ certifications, onSave, onClose }) {
+  useDialogLifecycle(onClose)
   const [items, setItems] = useState(() =>
     [...certifications].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)),
   )
@@ -404,6 +403,9 @@ function CertReorderModal({ certifications, onSave, onClose }) {
       onClick={onClose}
     >
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Reorder certifications"
         className="flex max-h-[calc(100vh-2.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[1.8rem] border border-[rgba(247,204,129,0.24)] bg-[rgba(29,21,15,0.96)] shadow-[0_30px_90px_rgba(9,6,4,0.54)]"
         initial={{ y: 20, scale: 0.97, opacity: 0 }}
         animate={{ y: 0, scale: 1, opacity: 1 }}
@@ -501,6 +503,7 @@ function StatTile({ icon, label, value, note }) {
 }
 
 function CertificationModal({ cert, previewUrl, previewFailed, onClose }) {
+  useDialogLifecycle(onClose)
   const hasAsset = Boolean(cert?.assetUrl)
   const isPdf = cert?.assetType === 'pdf'
   const isFile = cert?.assetType === 'file'
@@ -514,6 +517,9 @@ function CertificationModal({ cert, previewUrl, previewFailed, onClose }) {
       onClick={onClose}
     >
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${cert.name} certificate preview`}
         className="w-full max-w-5xl overflow-hidden rounded-[1.8rem] border border-[rgba(247,204,129,0.24)] bg-[rgba(29,21,15,0.96)] shadow-[0_30px_90px_rgba(9,6,4,0.54)]"
         initial={{ y: 20, scale: 0.97, opacity: 0 }}
         animate={{ y: 0, scale: 1, opacity: 1 }}
@@ -608,6 +614,7 @@ function CertificationModal({ cert, previewUrl, previewFailed, onClose }) {
 }
 
 function CertificationEditorModal({ cert, onSave, onClose }) {
+  useDialogLifecycle(onClose)
   const [form, setForm] = useState(() => ({
     name: cert?.name || '',
     organization: cert?.organization || '',
@@ -635,6 +642,9 @@ function CertificationEditorModal({ cert, onSave, onClose }) {
       onClick={onClose}
     >
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label={cert ? `Edit ${cert.name}` : 'Add certification'}
         className="flex max-h-[calc(100vh-2.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[1.8rem] border border-[rgba(247,204,129,0.24)] bg-[rgba(29,21,15,0.96)] shadow-[0_30px_90px_rgba(9,6,4,0.54)]"
         initial={{ y: 20, scale: 0.97, opacity: 0 }}
         animate={{ y: 0, scale: 1, opacity: 1 }}
@@ -754,6 +764,7 @@ function CertificationEditorModal({ cert, onSave, onClose }) {
 }
 
 function RoadmapEditorModal({ value, onSave, onClose }) {
+  useDialogLifecycle(onClose)
   const [text, setText] = useState(() => value.map(formatRoadmapLine).join('\n'))
 
   return (
@@ -765,6 +776,9 @@ function RoadmapEditorModal({ value, onSave, onClose }) {
       onClick={onClose}
     >
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit certification roadmap"
         className="w-full max-w-2xl overflow-hidden rounded-[1.8rem] border border-[rgba(247,204,129,0.24)] bg-[rgba(29,21,15,0.96)] shadow-[0_30px_90px_rgba(9,6,4,0.54)]"
         initial={{ y: 20, scale: 0.97, opacity: 0 }}
         animate={{ y: 0, scale: 1, opacity: 1 }}
@@ -799,12 +813,29 @@ function RoadmapEditorModal({ value, onSave, onClose }) {
   )
 }
 
+function CertificationTechnologyChip({ technology, skills, onOpen, compact = false }) {
+  const relationship = resolveCertificationTechnology(technology, skills)
+  const className = `cert-technology-chip ${relationship.skill ? 'is-linked' : 'is-topic'} ${compact ? '' : 'px-4 py-2 text-sm'}`.trim()
+
+  if (!relationship.skill) {
+    return <span className={className} title="Certification learning topic">{relationship.label}</span>
+  }
+
+  return (
+    <button type="button" onClick={() => onOpen(relationship.skill)} className={className} title={`View ${relationship.skill.name} in Skills`}>
+      {relationship.label}<span aria-hidden="true">→</span>
+    </button>
+  )
+}
+
 function CertificationsPageContent({ auth }) {
   const navigate = useNavigate()
   const { getToken, isLoaded, isSignedIn } = auth
   const { isGuestMode, portfolio, resolvePath } = useGuestMode()
   const publicCertifications = isGuestMode ? portfolio.certifications || [] : []
+  const publicSkills = isGuestMode ? portfolio.skills || [] : []
   const [certifications, setCertifications] = useState(() => publicCertifications.map((item, index) => hydrateCert(item, index)))
+  const [skills, setSkills] = useState(() => publicSkills)
   const [loading, setLoading] = useState(!isGuestMode)
   const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
@@ -831,34 +862,20 @@ function CertificationsPageContent({ auth }) {
     let cancelled = false
 
     async function loadWorkspaceCertifications() {
-      const legacyCertifications = loadPersistedJson(CERTIFICATIONS_STORAGE_KEY)
-      const legacyPinned = loadPersistedJson(CERTIFICATIONS_PINNED_STORAGE_KEY)
-      const legacyRoadmap = loadPersistedJson(CERTIFICATIONS_ROADMAP_STORAGE_KEY)
-      const needsImport = typeof window !== 'undefined'
-        && window.localStorage.getItem(CERTIFICATIONS_POSTGRES_IMPORT_KEY) !== 'complete'
-        && Array.isArray(legacyCertifications)
-        && legacyCertifications.length > 0
-
-      const result = needsImport
-        ? await importLegacyCertifications({
-          certifications: legacyCertifications.map((certification) => ({
-            ...certification,
-            featured: Array.isArray(legacyPinned) ? legacyPinned.includes(certification.id) : Boolean(certification.featured),
-          })),
-          roadmap: Array.isArray(legacyRoadmap) ? legacyRoadmap : undefined,
-        }, getToken)
-        : {
-          certifications: await fetchCertifications(getToken),
-          roadmap: await fetchCertificationRoadmap(getToken),
-        }
+      const skillsPromise = fetchSkills(getToken)
+      const result = {
+        certifications: await fetchCertifications(getToken),
+        roadmap: await fetchCertificationRoadmap(getToken),
+      }
+      const nextSkills = await skillsPromise
 
       if (cancelled) return
       const nextCertifications = (result.certifications || []).map((item) => hydrateCert(item))
       setCertifications(nextCertifications)
       setPinnedIds(nextCertifications.filter((item) => item.featured).slice(0, 3).map((item) => item.id))
       setRoadmapItems(result.roadmap || [])
+      setSkills(Array.isArray(nextSkills) ? nextSkills : [])
       setLoadError('')
-      if (needsImport) window.localStorage.setItem(CERTIFICATIONS_POSTGRES_IMPORT_KEY, 'complete')
     }
 
     loadWorkspaceCertifications()
@@ -901,14 +918,6 @@ function CertificationsPageContent({ auth }) {
       createdUrls.forEach((url) => URL.revokeObjectURL(url))
     }
   }, [certifications, getToken, isGuestMode, isLoaded, isSignedIn])
-
-  useEffect(() => {
-    if (isGuestMode) return
-    if (typeof window === 'undefined' || loading) return
-    window.localStorage.setItem(CERTIFICATIONS_STORAGE_KEY, JSON.stringify(certifications))
-    window.localStorage.setItem(CERTIFICATIONS_PINNED_STORAGE_KEY, JSON.stringify(pinnedIds))
-    window.localStorage.setItem(CERTIFICATIONS_ROADMAP_STORAGE_KEY, JSON.stringify(roadmapItems))
-  }, [certifications, isGuestMode, loading, pinnedIds, roadmapItems])
 
   // derive valid pinned IDs without a state-syncing effect
   const validPinnedIds = useMemo(
@@ -1045,8 +1054,8 @@ function CertificationsPageContent({ auth }) {
     } catch (error) { toast.error(error.message || 'Unable to reorder certifications.') }
   }
 
-  const openTechnology = (technology) => {
-    navigate(resolvePath(`/skills?technology=${encodeURIComponent(technology)}`))
+  const openTechnology = (skill) => {
+    navigate(resolvePath(`/skills?skill=${encodeURIComponent(getCanonicalSkillKey(skill))}`))
   }
 
   const openAddCertification = () => {
@@ -1353,11 +1362,7 @@ function CertificationsPageContent({ auth }) {
                   <div>
                     <p className="mb-2 text-[0.68rem] uppercase tracking-[0.22em] text-[var(--color-text-muted)]">Related technologies</p>
                     <div className="flex flex-wrap gap-2">
-                      {cert.technologies.slice(0, 4).map((technology) => (
-                        <button key={technology} type="button" onClick={() => openTechnology(technology)} className="chip chip--accent">
-                          {technology}
-                        </button>
-                      ))}
+                      {cert.technologies.slice(0, 4).map((technology) => <CertificationTechnologyChip key={technology} technology={technology} skills={skills} onOpen={openTechnology} compact />)}
                     </div>
                   </div>
 
@@ -1399,14 +1404,12 @@ function CertificationsPageContent({ auth }) {
       <section className="surface-card surface-card--strong p-5 md:p-6">
         <SectionHeader
           eyebrow="Technologies Gained"
-          title="Each certification feeds the Skills page"
-          description="Click any technology to open it directly inside your skills dashboard."
+          title="What I’m learning through certifications"
+          description="Core technologies connect to my Skills workspace, while supporting topics show the broader knowledge covered along the way."
         />
         <div className="mt-5 flex flex-wrap gap-2">
           {[...new Set(certifications.flatMap((cert) => cert.technologies))].map((technology) => (
-            <button key={technology} type="button" onClick={() => openTechnology(technology)} className="chip chip--accent px-4 py-2 text-sm">
-              {technology}
-            </button>
+            <CertificationTechnologyChip key={technology} technology={technology} skills={skills} onOpen={openTechnology} />
           ))}
         </div>
       </section>

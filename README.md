@@ -29,7 +29,7 @@ npm run dev
 
 ```bash
 cd backend
-node src/app.js
+npm run dev
 ```
 
 ## Verification
@@ -42,3 +42,15 @@ npm run verify:data
 ```
 
 See [deployment guidance](docs/DEPLOYMENT.md) and the [refactor progress log](docs/DEVVAULT_REFACTOR_PROGRESS.md) for production configuration, migrations, safeguards, and remaining external setup.
+
+## Production engineering commands
+
+```bash
+npm run deploy:preflight
+npm run db:production:check
+npm run db:verify
+npm run ownership:preview -- --from=dev-local-user --to=user_PRODUCTION_ID
+APP_URL=https://frontend.example API_URL=https://api.example PORTFOLIO_USERNAME=your-public-username npm run production:smoke
+```
+
+These checks do not deploy DevVault or alter data. Ownership apply and database restore are intentionally separate, explicitly confirmed production operations. Review the [security model](docs/SECURITY_MODEL.md), [backup strategy](docs/BACKUPS.md), and [rollback runbook](docs/ROLLBACK.md) before launch.

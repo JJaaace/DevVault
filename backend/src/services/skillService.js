@@ -17,11 +17,12 @@ const SKILL_SELECT = {
   color: true,
   lastUsed: true,
   notes: true,
+  favorite: true,
   publicVisible: true,
   createdAt: true,
   updatedAt: true,
   relatedProjects: {
-    include: { project: true },
+    include: { project: { select: { id: true, title: true, status: true, publicVisible: true, featured: true } } },
     orderBy: { projectId: 'asc' },
   },
 }
@@ -114,11 +115,14 @@ function validateSkillPayload(payload) {
   if (payload.lastUsed && !normalizeDate(payload.lastUsed)) {
     errors.lastUsed = 'Last used must be a valid date.'
   }
+  if (payload.favorite !== undefined && typeof payload.favorite !== 'boolean') {
+    errors.favorite = 'Favorite must be true or false.'
+  }
 
   return errors
 }
 
-function buildSkillPayload(payload, clerkUserId) {
+function buildSkillPayload(payload, clerkUserId, current = {}) {
   return {
     ownerClerkUserId: clerkUserId,
     name: payload.name.trim(),
@@ -130,6 +134,7 @@ function buildSkillPayload(payload, clerkUserId) {
     color: payload.color.trim(),
     lastUsed: normalizeDate(payload.lastUsed),
     notes: normalizeText(payload.notes),
+    favorite: payload.favorite === undefined ? Boolean(current.favorite) : Boolean(payload.favorite),
     publicVisible: payload.publicVisible === undefined ? true : Boolean(payload.publicVisible),
   }
 }
@@ -252,14 +257,23 @@ async function createSkill(clerkUserId, payload) {
 
   if (isPostgresMode()) {
     await ensureOwnerUser(clerkUserId)
-    const skill = await prisma.skill.create({
-      data: {
-        ...data,
-        relatedProjects: {
-          create: relatedProjectIds.map((projectId) => ({ project: { connect: { id: projectId } } })),
+    const skill = await prisma.$transaction(async (transaction) => {
+      if (data.favorite) {
+        await transaction.skill.updateMany({
+          where: { ownerClerkUserId: clerkUserId, favorite: true },
+          data: { favorite: false },
+        })
+      }
+
+      return transaction.skill.create({
+        data: {
+          ...data,
+          relatedProjects: {
+            create: relatedProjectIds.map((projectId) => ({ project: { connect: { id: projectId } } })),
+          },
         },
-      },
-      select: SKILL_SELECT,
+        select: SKILL_SELECT,
+      })
     })
     return serializePrismaSkill(skill)
   }
@@ -276,7 +290,9 @@ async function createSkill(clerkUserId, payload) {
   updateLocalStore((current) => ({
     ...current,
     nextSkillId: current.nextSkillId + 1,
-    skills: [skill, ...current.skills],
+    skills: [skill, ...current.skills.map((item) => (
+      data.favorite && item.ownerClerkUserId === clerkUserId ? { ...item, favorite: false } : item
+    ))],
   }))
   return serializeLocalSkill(skill, relatedProjects)
 }
@@ -291,25 +307,44 @@ async function updateSkill(clerkUserId, skillId, payload) {
     throw createServiceError(400, 'Invalid skill data.', errors)
   }
 
-  const relatedProjectIds = normalizeIdList(payload.relatedProjectIds)
-  const relatedProjects = await resolveRelatedProjects(clerkUserId, relatedProjectIds)
-  const data = buildSkillPayload(payload, clerkUserId)
-
   if (isPostgresMode()) {
-    const existing = await prisma.skill.findFirst({ where: { id, ownerClerkUserId: clerkUserId } })
+    const existing = await prisma.skill.findFirst({
+      where: { id, ownerClerkUserId: clerkUserId },
+      select: SKILL_SELECT,
+    })
     if (!existing) {
       throw createServiceError(404, 'Skill not found.')
     }
-    const skill = await prisma.skill.update({
-      where: { id },
-      data: {
-        ...data,
-        relatedProjects: {
-          deleteMany: {},
-          create: relatedProjectIds.map((projectId) => ({ project: { connect: { id: projectId } } })),
+    const existingProjectIds = existing.relatedProjects.map((item) => item.project.id).sort((left, right) => left - right)
+    const relatedProjectIds = payload.relatedProjectIds === undefined
+      ? existingProjectIds
+      : normalizeIdList(payload.relatedProjectIds)
+    await resolveRelatedProjects(clerkUserId, relatedProjectIds)
+    const relationshipsChanged = existingProjectIds.length !== relatedProjectIds.length
+      || existingProjectIds.some((projectId, index) => projectId !== relatedProjectIds[index])
+    const data = buildSkillPayload(payload, clerkUserId, existing)
+
+    const skill = await prisma.$transaction(async (transaction) => {
+      if (data.favorite) {
+        await transaction.skill.updateMany({
+          where: { ownerClerkUserId: clerkUserId, favorite: true, id: { not: id } },
+          data: { favorite: false },
+        })
+      }
+
+      return transaction.skill.update({
+        where: { id },
+        data: {
+          ...data,
+          ...(relationshipsChanged ? {
+            relatedProjects: {
+              deleteMany: {},
+              create: relatedProjectIds.map((projectId) => ({ project: { connect: { id: projectId } } })),
+            },
+          } : {}),
         },
-      },
-      select: SKILL_SELECT,
+        select: SKILL_SELECT,
+      })
     })
     return serializePrismaSkill(skill)
   }
@@ -319,6 +354,11 @@ async function updateSkill(clerkUserId, skillId, payload) {
   if (!existing) {
     throw createServiceError(404, 'Skill not found.')
   }
+  const relatedProjectIds = payload.relatedProjectIds === undefined
+    ? normalizeIdList(existing.relatedProjectIds)
+    : normalizeIdList(payload.relatedProjectIds)
+  const relatedProjects = await resolveRelatedProjects(clerkUserId, relatedProjectIds)
+  const data = buildSkillPayload(payload, clerkUserId, existing)
   const updatedSkill = {
     ...existing,
     ...data,
@@ -330,7 +370,9 @@ async function updateSkill(clerkUserId, skillId, payload) {
   updateLocalStore((current) => ({
     ...current,
     skills: current.skills.map((skill) => (
-      skill.id === id && skill.ownerClerkUserId === clerkUserId ? updatedSkill : skill
+      skill.ownerClerkUserId === clerkUserId && data.favorite
+        ? (skill.id === id ? updatedSkill : { ...skill, favorite: false })
+        : (skill.id === id && skill.ownerClerkUserId === clerkUserId ? updatedSkill : skill)
     )),
   }))
   return serializeLocalSkill(updatedSkill, relatedProjects)

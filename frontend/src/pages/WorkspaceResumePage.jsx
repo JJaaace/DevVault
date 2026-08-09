@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { fetchWorkspaceResume, fetchWorkspaceResumePdf, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
 import { useGuestMode } from '../context/GuestModeContext'
 
+const MAX_RESUME_BYTES = 12 * 1024 * 1024
+
 function formatBytes(size) {
   const bytes = Number(size || 0)
   if (bytes <= 0) {
@@ -143,6 +145,12 @@ function WorkspaceResumePageContent({ getToken }) {
 
     if (!isPdfFile(file)) {
       toast.error('Please upload a PDF file.')
+      event.target.value = ''
+      return
+    }
+
+    if (file.size > MAX_RESUME_BYTES) {
+      toast.error('Resume must be 12 MB or smaller.')
       event.target.value = ''
       return
     }
