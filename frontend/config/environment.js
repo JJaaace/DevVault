@@ -31,8 +31,11 @@ export function validateFrontendEnvironment(values, { production = false, throwO
   if (production && !apiBaseUrl) errors.push('VITE_API_BASE_URL is required in production.')
   if (production && !publicAppUrl) errors.push('VITE_PUBLIC_APP_URL is required in production.')
   if (production && !clerkPublishableKey) errors.push('VITE_CLERK_PUBLISHABLE_KEY is required in production.')
-  if (production && clerkPublishableKey && (!clerkPublishableKey.startsWith('pk_live_') || /replace[_-]?me|your[_-]|example/i.test(clerkPublishableKey))) {
-    errors.push('VITE_CLERK_PUBLISHABLE_KEY must be a production publishable key.')
+  if (production && clerkPublishableKey && (
+    (!clerkPublishableKey.startsWith('pk_live_') && !clerkPublishableKey.startsWith('pk_test_'))
+    || /replace[_-]?me|your[_-]|example/i.test(clerkPublishableKey)
+  )) {
+    errors.push('VITE_CLERK_PUBLISHABLE_KEY must be a valid Clerk publishable key.')
   }
 
   if (errors.length && throwOnError) throw new Error(`Invalid frontend configuration:\n- ${errors.join('\n- ')}`)
