@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuthenticatedMediaUrl } from '../hooks/useAuthenticatedMediaUrl'
 
 const MAX_PROFILE_IMAGE_BYTES = 7 * 1024 * 1024
 const ALLOWED_PROFILE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
@@ -62,7 +63,7 @@ function Field({ label, name, value, onChange, placeholder, error, type = 'text'
   )
 }
 
-export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, errors = {} }) {
+export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, errors = {}, getToken }) {
   const initialImageUrl = profile?.profileImageUrl ?? profile?.profileImage ?? ''
   const [formData, setFormData] = useState(() => ({
     firstName: profile?.firstName ?? '',
@@ -93,6 +94,7 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
   }))
   const [imagePreview, setImagePreview] = useState(initialImageUrl)
   const [uploadError, setUploadError] = useState('')
+  const { src: resolvedImagePreview } = useAuthenticatedMediaUrl(imagePreview, getToken, { enabled: Boolean(getToken) })
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -183,7 +185,7 @@ export function ProfileForm({ profile, onSubmit, onCancel, submitting = false, e
           {errors.profileImageUrl ? <p className="mt-2 text-sm text-[#b83a1c]">{errors.profileImageUrl}</p> : null}
           {isImageSource(imagePreview) ? (
             <div className="mt-3 flex items-center gap-3 rounded-[1.15rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(44,33,24,0.82)] p-3">
-              <img src={imagePreview} alt="Profile preview" className="h-14 w-14 rounded-2xl object-cover" />
+              {resolvedImagePreview ? <img src={resolvedImagePreview} alt="Profile preview" className="h-14 w-14 rounded-2xl object-cover" /> : null}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-[var(--color-text)]">Image ready</p>
                 <p className="truncate text-xs text-[var(--color-text-soft)]">This image will be saved with your profile.</p>

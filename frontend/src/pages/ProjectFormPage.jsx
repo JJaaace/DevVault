@@ -180,6 +180,7 @@ export function ProjectFormPage() {
         <ProjectForm
           key={project?.id || 'new-project'}
           project={project}
+          getToken={getToken}
           onSubmit={handleSubmit}
           onCancel={() => navigate('/projects')}
           submitting={submitting}

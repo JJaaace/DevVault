@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuthenticatedMediaUrl } from '../hooks/useAuthenticatedMediaUrl'
 import {
   PROJECT_STATUS_OPTIONS,
   listToTextarea,
@@ -80,9 +81,10 @@ function buildInitialState(project) {
   }
 }
 
-export function ProjectForm({ project, onSubmit, onCancel, submitting = false, errors = {}, submitLabel = 'Save project' }) {
+export function ProjectForm({ project, onSubmit, onCancel, submitting = false, errors = {}, submitLabel = 'Save project', getToken }) {
   const [formData, setFormData] = useState(() => buildInitialState(project))
   const [imageUploadError, setImageUploadError] = useState('')
+  const { src: resolvedImagePreview } = useAuthenticatedMediaUrl(formData.image, getToken, { enabled: Boolean(getToken) })
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -239,7 +241,7 @@ export function ProjectForm({ project, onSubmit, onCancel, submitting = false, e
 
         {isImageSource(formData.image) ? (
           <div className="mt-3 flex items-center gap-3 rounded-[1.05rem] border border-[rgba(214,160,89,0.24)] bg-[rgba(38,28,20,0.84)] p-3">
-            <img src={formData.image} alt="Project banner preview" className="h-16 w-24 rounded-xl object-cover" />
+            {resolvedImagePreview ? <img src={resolvedImagePreview} alt="Project banner preview" className="h-16 w-24 rounded-xl object-cover" /> : null}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-[var(--color-text)]">Banner preview ready</p>
               <p className="text-xs text-[var(--color-text-muted)]">This image will appear on project showcase cards after save.</p>

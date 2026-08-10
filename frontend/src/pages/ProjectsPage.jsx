@@ -266,6 +266,7 @@ function ProjectsPageContent({ auth }) {
                 project={project}
                 index={index}
                 readOnly={isGuestMode}
+                getToken={getToken}
               />
             </div>
           ))}

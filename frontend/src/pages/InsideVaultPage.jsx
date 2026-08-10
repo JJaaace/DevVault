@@ -7,6 +7,7 @@ import { VaultPortrait } from '../components/insideVault/VaultPortrait'
 import { authenticatedRequest } from '../lib/api'
 import { getSkillLevelMeta } from '../lib/skillUtils'
 import { useGuestMode } from '../context/GuestModeContext'
+import { useAuthenticatedMediaUrl } from '../hooks/useAuthenticatedMediaUrl'
 
 const introParagraph = `I'm a Computer Information Systems student at The Ohio State University and someone who genuinely enjoys building software that solves real problems.
 
@@ -190,6 +191,7 @@ function InsideVaultPageContent({ getToken }) {
   )
 
   const profile = workspace.profile
+  const { src: profileImageSrc } = useAuthenticatedMediaUrl(profile?.profileImageUrl, getToken, { enabled: !isGuestMode })
   const publicGoals = workspace.goals.filter((goal) => goal.status === 'current' || goal.status === 'future').slice(0, 4)
 
   const handleLogoClick = () => {
@@ -244,8 +246,8 @@ function InsideVaultPageContent({ getToken }) {
               className="inside-vault-portrait-center"
             >
               <VaultPortrait
-                key={profile?.profileImageUrl || 'profile-picture-loading'}
-                src={profile?.profileImageUrl || '/profile/profile.jpg'}
+                key={profileImageSrc || 'profile-picture-loading'}
+                src={profileImageSrc || '/profile/profile.jpg'}
                 alt={`Portrait of ${profile?.firstName || 'the developer'}`}
                 allowLocalOverride={!isGuestMode}
                 onImageChange={isGuestMode ? undefined : saveProfileImage}

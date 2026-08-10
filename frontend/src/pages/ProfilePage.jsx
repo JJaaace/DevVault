@@ -177,6 +177,7 @@ export function ProfilePage() {
           <ProfileForm
             key={`${profile?.id || profile?.username || 'new-profile'}:${profile?.updatedAt || profile?.savedAt || 'new'}:${profile?.profileImageUrl ? 'with-image' : 'without-image'}`}
             profile={profile}
+            getToken={getToken}
             onSubmit={handleSubmit}
             onCancel={() => navigate('/dashboard')}
             submitting={submitting}

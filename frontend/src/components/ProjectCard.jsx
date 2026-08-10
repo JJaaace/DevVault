@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { formatProjectDate, formatProjectRelativeDate, getProjectStatusMeta } from '../lib/projectUtils'
+import { useAuthenticatedMediaUrl } from '../hooks/useAuthenticatedMediaUrl'
 
 function BannerFallback() {
   return (
@@ -12,18 +13,19 @@ function BannerFallback() {
   )
 }
 
-export function ProjectCard({ project, readOnly = false }) {
+export function ProjectCard({ project, readOnly = false, getToken }) {
   const statusMeta = getProjectStatusMeta(project.status)
   const techStack = project.techStack || []
   const keyFeatures = project.keyFeatures || []
+  const { src: bannerImageSrc } = useAuthenticatedMediaUrl(project.bannerImageUrl, getToken, { enabled: !readOnly && Boolean(getToken) })
 
   return (
     <article className="widget-card project-showcase-card project-showcase-card--compact h-full overflow-hidden hover-lift">
       <div className="group/project relative p-3.5 pb-0">
         <div className="project-banner-shell">
-          {project.bannerImageUrl ? (
+          {bannerImageSrc ? (
             <img
-              src={project.bannerImageUrl}
+              src={bannerImageSrc}
               alt={`${project.title} banner`}
               className="project-banner-image aspect-[16/8] w-full rounded-[1rem] object-cover"
             />

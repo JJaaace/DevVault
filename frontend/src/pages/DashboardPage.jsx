@@ -8,6 +8,7 @@ import { getTimeGreeting } from '../lib/dashboardUtils'
 import { getSkillLevelMeta } from '../lib/skillUtils'
 import { decorateProjectShowcase } from '../lib/projectShowcaseCatalog'
 import { useGuestMode } from '../context/GuestModeContext'
+import { useAuthenticatedMediaUrl } from '../hooks/useAuthenticatedMediaUrl'
 
 function Link({ to, ...props }) {
   const { resolvePath } = useGuestMode()
@@ -139,9 +140,10 @@ function CareerAction({ href, to, icon, label, variant, external = false }) {
   return <a href={href} target={external ? '_blank' : undefined} rel={external ? 'noreferrer' : undefined} className={className}>{content}</a>
 }
 
-function IdentityHero({ profile, email, commandDeck }) {
+function IdentityHero({ profile, email, commandDeck, getToken }) {
   const reduceMotion = useReducedMotion()
   const { isGuestMode, basePath } = useGuestMode()
+  const { src: profileImageSrc } = useAuthenticatedMediaUrl(profile?.profileImageUrl, getToken, { enabled: !isGuestMode })
   const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.username || 'Your profile'
   const initials = fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
   const schoolLine = [profile?.major, profile?.school].filter(Boolean).join(' · ')
@@ -165,8 +167,8 @@ function IdentityHero({ profile, email, commandDeck }) {
           transition={{ duration: 0.48, delay: 0.08 }}
           className="db-portrait-shell"
         >
-          {profile?.profileImageUrl ? (
-            <img src={profile.profileImageUrl} alt={`${fullName} profile`} className="db-portrait" />
+          {profileImageSrc ? (
+            <img src={profileImageSrc} alt={`${fullName} profile`} className="db-portrait" />
           ) : (
             <div className="db-portrait db-portrait--fallback" aria-label={`${fullName} initials`}>{initials}</div>
           )}
@@ -251,8 +253,10 @@ function StatusRail({ profile, commandDeck }) {
   )
 }
 
-function CurrentBuild({ project, highlightedTechnology }) {
+function CurrentBuild({ project, highlightedTechnology, getToken }) {
+  const { isGuestMode } = useGuestMode()
   const showcaseProject = useMemo(() => project ? decorateProjectShowcase(project, 0) : null, [project])
+  const { src: showcaseImageSrc } = useAuthenticatedMediaUrl(showcaseProject?.showcase?.image, getToken, { enabled: !isGuestMode })
   if (!showcaseProject) {
     return (
       <Reveal>
@@ -274,7 +278,7 @@ function CurrentBuild({ project, highlightedTechnology }) {
     <Reveal>
       <SpotlightSurface className={`db-current-build ${isHighlighted ? 'db-current-build--linked' : ''}`}>
         <div className={`db-build-image-wrap ${usesFallbackArtwork ? 'db-build-image-wrap--fallback' : ''}`.trim()}>
-          <img src={showcaseProject.showcase.image} alt={`${showcaseProject.title} project artwork`} className="db-build-image" decoding="async" />
+          {showcaseImageSrc ? <img src={showcaseImageSrc} alt={`${showcaseProject.title} project artwork`} className="db-build-image" decoding="async" /> : null}
           <div className="db-build-scrim" />
           <div className="db-build-kicker"><span className="db-live-dot" />Current build</div>
           <span className={`db-project-status db-project-status--${String(showcaseProject.status).toLowerCase()}`}>
@@ -548,11 +552,11 @@ function DashboardPageContent({ getToken, user }) {
       {dashboard ? (
         <>
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.48 }} className="db-hero-grid">
-            <IdentityHero profile={profile} email={email} commandDeck={commandDeck} />
+            <IdentityHero profile={profile} email={email} commandDeck={commandDeck} getToken={getToken} />
             <StatusRail profile={profile} commandDeck={commandDeck} />
           </motion.div>
 
-          <CurrentBuild project={commandDeck?.currentProject} highlightedTechnology={highlightedTechnology} />
+          <CurrentBuild project={commandDeck?.currentProject} highlightedTechnology={highlightedTechnology} getToken={getToken} />
           <EvidenceStrip evidence={commandDeck?.evidence} currentProject={commandDeck?.currentProject} />
           <TechnologyBench skills={commandDeck?.technologyBench || []} onHover={setHighlightedTechnology} />
 

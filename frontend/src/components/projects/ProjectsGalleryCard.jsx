@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { DevVaultLogo } from '../branding/DevVaultLogo'
 import { getProjectStatusMeta } from '../../lib/projectUtils'
 import { useGuestMode } from '../../context/GuestModeContext'
+import { useAuthenticatedMediaUrl } from '../../hooks/useAuthenticatedMediaUrl'
 
 const TECH_ICONS = {
   react: '⚛',
@@ -53,12 +54,14 @@ function ProjectsGalleryCardComponent({
   project,
   index,
   readOnly = false,
+  getToken,
 }) {
-  const { resolvePath } = useGuestMode()
+  const { resolvePath, isGuestMode } = useGuestMode()
   const statusMeta = getProjectStatusMeta(project.showcase.status)
   const techStack = project.showcase.techStack || []
   const keyFeatures = project.showcase.keyFeatures || []
   const useDevVaultLogo = project.showcase.logoVariant === 'devvault-mark'
+  const { src: artworkSrc } = useAuthenticatedMediaUrl(project.showcase.image, getToken, { enabled: !isGuestMode })
 
   return (
     <article
@@ -72,9 +75,9 @@ function ProjectsGalleryCardComponent({
               <DevVaultLogo compact size="xl" />
             </div>
           </div>
-        ) : project.showcase.image ? (
+        ) : artworkSrc ? (
           <img
-            src={project.showcase.image}
+            src={artworkSrc}
             alt={`${project.showcase.title} artwork`}
             loading="lazy"
             decoding="async"
