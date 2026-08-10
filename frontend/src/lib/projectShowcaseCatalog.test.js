@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decorateProjectShowcase } from './projectShowcaseCatalog.js'
+import { decorateProjectShowcase, shouldShowProjectLiveDemo } from './projectShowcaseCatalog.js'
 
 test('curated project artwork wins over catalog and GitHub artwork', () => {
   const project = decorateProjectShowcase({
@@ -24,4 +24,20 @@ test('catalog artwork wins over low-authority GitHub owner avatars', () => {
   }, 0)
   assert.equal(project.showcase.image, '/project-showcase/devvault.svg')
   assert.equal(project.showcase.featured, false)
+})
+
+test('DevVault suppresses its redundant live demo while other project demos remain available', () => {
+  const devVault = decorateProjectShowcase({
+    title: 'DevVault',
+    liveDemoUrl: 'https://devvault.example.test',
+    techStack: [],
+  }, 0)
+  const otherProject = decorateProjectShowcase({
+    title: 'Password Strength Analyzer',
+    liveDemoUrl: 'https://password.example.test',
+    techStack: [],
+  }, 1)
+
+  assert.equal(shouldShowProjectLiveDemo(devVault), false)
+  assert.equal(shouldShowProjectLiveDemo(otherProject), true)
 })

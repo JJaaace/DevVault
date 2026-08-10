@@ -18,6 +18,7 @@ import {
 import { fetchSkills } from '../lib/skillsApi'
 import { getCanonicalSkillKey, resolveCertificationTechnology } from '../lib/certificationTechnology'
 import { useGuestMode } from '../context/GuestModeContext'
+import { usePublicPdfObjectUrls } from '../hooks/usePublicPdfObjectUrls'
 
 // Historical one-time migration snapshots. Application state comes only from PostgreSQL APIs.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -855,6 +856,20 @@ function CertificationsPageContent({ auth }) {
   const [assetPreviewUrls, setAssetPreviewUrls] = useState(() => Object.fromEntries(publicCertifications.filter((item) => item.assetUrl).map((item) => [item.id, item.assetUrl])))
   const fileInputRef = useRef(null)
   const activeUploadIdRef = useRef(null)
+  const publicPdfEntries = useMemo(
+    () => isGuestMode ? certifications.filter((cert) => cert.assetType === 'pdf' && cert.assetUrl).map((cert) => ({ key: cert.id, source: cert.assetUrl })) : [],
+    [certifications, isGuestMode],
+  )
+  const publicPdfPreviews = usePublicPdfObjectUrls(publicPdfEntries, { enabled: isGuestMode })
+  const resolvedAssetPreviewUrls = useMemo(() => {
+    if (!isGuestMode) return assetPreviewUrls
+    return Object.fromEntries(certifications.map((cert) => {
+      if (cert.assetType !== 'pdf') return [cert.id, assetPreviewUrls[cert.id]]
+      if (publicPdfPreviews.urls[cert.id]) return [cert.id, publicPdfPreviews.urls[cert.id]]
+      if (publicPdfPreviews.errors[cert.id]) return [cert.id, null]
+      return [cert.id, undefined]
+    }))
+  }, [assetPreviewUrls, certifications, isGuestMode, publicPdfPreviews.errors, publicPdfPreviews.urls])
 
   useEffect(() => {
     if (isGuestMode) return
@@ -1190,7 +1205,7 @@ function CertificationsPageContent({ auth }) {
         <div className="mt-5 grid gap-4 xl:grid-cols-3">
           {featuredCertifications.map((cert, index) => {
             const meta = statusMeta[cert.status]
-            const previewUrl = resolveCertificationPreviewUrl(cert, assetPreviewUrls)
+            const previewUrl = resolveCertificationPreviewUrl(cert, resolvedAssetPreviewUrls)
             return (
               <motion.article
                 key={cert.id}
@@ -1253,7 +1268,7 @@ function CertificationsPageContent({ auth }) {
                         </button>
                       ) : cert.assetUrl ? (
                         <div className="grid h-56 w-full place-items-center rounded-[1.15rem] border border-dashed border-[rgba(214,160,89,0.26)] bg-[rgba(30,21,15,0.84)] px-5 text-center text-sm text-[var(--color-text-soft)]">
-                          {assetPreviewUrls[cert.id] === null ? 'Preview unavailable. Use Replace Media to upload this file again.' : 'Loading secure preview…'}
+                          {resolvedAssetPreviewUrls[cert.id] === null ? 'Preview unavailable. Use Replace Media to upload this file again.' : 'Loading secure preview…'}
                         </div>
                       ) : isGuestMode ? (
                         <div className="grid h-56 w-full place-items-center rounded-[1.15rem] border border-dashed border-[rgba(214,160,89,0.26)] bg-[rgba(30,21,15,0.84)] text-sm text-[var(--color-text-soft)]">No public media attached</div>
@@ -1295,7 +1310,7 @@ function CertificationsPageContent({ auth }) {
           {galleryCertifications.map((cert, index) => {
             const meta = statusMeta[cert.status]
             const isPinned = validPinnedIds.includes(cert.id)
-            const previewUrl = resolveCertificationPreviewUrl(cert, assetPreviewUrls)
+            const previewUrl = resolveCertificationPreviewUrl(cert, resolvedAssetPreviewUrls)
 
             return (
               <motion.article
@@ -1348,7 +1363,7 @@ function CertificationsPageContent({ auth }) {
                       </button>
                     ) : cert.assetUrl ? (
                       <div className="grid h-32 w-full place-items-center rounded-[0.9rem] border border-dashed border-[rgba(214,160,89,0.28)] bg-[rgba(30,21,15,0.84)] px-4 text-center text-xs text-[var(--color-text-soft)]">
-                        {assetPreviewUrls[cert.id] === null ? 'Preview unavailable. Replace the media to retry.' : 'Loading secure preview…'}
+                        {resolvedAssetPreviewUrls[cert.id] === null ? 'Preview unavailable. Replace the media to retry.' : 'Loading secure preview…'}
                       </div>
                     ) : isGuestMode ? (
                       <div className="grid h-32 w-full place-items-center rounded-[0.9rem] border border-dashed border-[rgba(214,160,89,0.28)] bg-[rgba(30,21,15,0.84)] text-xs text-[var(--color-text-soft)]">No public media attached</div>
@@ -1507,8 +1522,8 @@ function CertificationsPageContent({ auth }) {
         {selectedCertification ? (
           <CertificationModal
             cert={selectedCertification}
-            previewUrl={resolveCertificationPreviewUrl(selectedCertification, assetPreviewUrls)}
-            previewFailed={assetPreviewUrls[selectedCertification.id] === null}
+            previewUrl={resolveCertificationPreviewUrl(selectedCertification, resolvedAssetPreviewUrls)}
+            previewFailed={resolvedAssetPreviewUrls[selectedCertification.id] === null}
             onClose={() => setSelectedCertification(null)}
           />
         ) : null}

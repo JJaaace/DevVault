@@ -188,10 +188,9 @@ export async function authenticatedRequest(path, options = {}, getToken) {
   )
 }
 
-export async function authenticatedBlobRequest(path, options = {}, getToken) {
+async function blobRequest(url, path, options = {}, token = '') {
   const method = options.method || 'GET'
   const headers = new Headers(options.headers || {})
-  const token = await getToken()
 
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
@@ -202,7 +201,7 @@ export async function authenticatedBlobRequest(path, options = {}, getToken) {
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(url, {
       ...options,
       headers,
       signal: controller.signal,
@@ -243,6 +242,19 @@ export async function authenticatedBlobRequest(path, options = {}, getToken) {
   } finally {
     clearTimeout(timeoutHandle)
   }
+}
+
+export async function authenticatedBlobRequest(path, options = {}, getToken) {
+  const token = await getToken()
+  return blobRequest(`${API_BASE_URL}${path}`, path, options, token)
+}
+
+export async function publicBlobRequest(source, options = {}) {
+  const url = new URL(String(source || ''), API_BASE_URL)
+  if (url.origin !== new URL(API_BASE_URL).origin) {
+    throw new Error('Public media must use the configured DevVault API origin.')
+  }
+  return blobRequest(url.href, `${url.pathname}${url.search}`, options)
 }
 
 export async function publicRequest(path, options = {}) {

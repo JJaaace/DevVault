@@ -64,6 +64,17 @@ function normalizeText(value) {
   return String(value).toLowerCase()
 }
 
+export function isDevVaultProject(project) {
+  const title = project?.title || project?.showcase?.title || ''
+  return normalizeText(title).replace(/[^a-z0-9]+/g, '').includes('devvault')
+    || project?.showcase?.logoVariant === 'devvault-mark'
+}
+
+export function shouldShowProjectLiveDemo(project) {
+  const demoUrl = project?.showcase?.demo || project?.liveDemoUrl || ''
+  return Boolean(demoUrl && !isDevVaultProject(project))
+}
+
 function uniq(values = []) {
   return [...new Set(values.filter(Boolean).map((item) => String(item).trim()).filter(Boolean))]
 }

@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { DevVaultLogo } from '../components/branding/DevVaultLogo'
 import { TechnologyLogo } from '../components/TechnologyLogo'
 import { fetchPublicPortfolio, getPublicAppUrl } from '../lib/portfolioApi'
-import { decorateProjectShowcase } from '../lib/projectShowcaseCatalog'
+import { decorateProjectShowcase, shouldShowProjectLiveDemo } from '../lib/projectShowcaseCatalog'
 import { getSkillLevelMeta } from '../lib/skillUtils'
 import '../guest-mode.css'
 
@@ -149,8 +149,9 @@ function DevVaultSignatureArtwork({ project }) {
 }
 
 function ProjectActions({ project }) {
-  if (!project.showcase.github && !project.showcase.demo) return null
-  return <div className="guest-project-actions">{project.showcase.github ? <a href={project.showcase.github} target="_blank" rel="noreferrer">GitHub <span>↗</span></a> : null}{project.showcase.demo ? <a href={project.showcase.demo} target="_blank" rel="noreferrer">Live demo <span>↗</span></a> : null}</div>
+  const showLiveDemo = shouldShowProjectLiveDemo(project)
+  if (!project.showcase.github && !showLiveDemo) return null
+  return <div className="guest-project-actions">{project.showcase.github ? <a href={project.showcase.github} target="_blank" rel="noreferrer">GitHub <span>↗</span></a> : null}{showLiveDemo ? <a href={project.showcase.demo} target="_blank" rel="noreferrer">Live demo <span>↗</span></a> : null}</div>
 }
 
 function normalizeTechnologyName(value) {
@@ -169,6 +170,7 @@ function getCanonicalProjectTechnologies(project, skills) {
 }
 
 function RecruiterProjectPoster({ project, technologies, index }) {
+  const showLiveDemo = shouldShowProjectLiveDemo(project)
   return (
     <motion.div className="guest-project-grid-item" initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * 0.07 }}>
       <Spotlight as="article" className="guest-project-poster">
@@ -184,7 +186,7 @@ function RecruiterProjectPoster({ project, technologies, index }) {
             <p>{project.description}</p>
             <div className="guest-project-actions">
               {project.showcase.github ? <a href={project.showcase.github} target="_blank" rel="noreferrer">GitHub <span>↗</span></a> : null}
-              {project.showcase.demo ? <a href={project.showcase.demo} target="_blank" rel="noreferrer">Live demo <span>↗</span></a> : null}
+              {showLiveDemo ? <a href={project.showcase.demo} target="_blank" rel="noreferrer">Live demo <span>↗</span></a> : null}
             </div>
           </div>
         </div>

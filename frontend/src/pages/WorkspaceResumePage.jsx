@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { fetchWorkspaceResume, fetchWorkspaceResumePdf, uploadWorkspaceResume } from '../lib/resumeWorkspaceApi'
 import { useGuestMode } from '../context/GuestModeContext'
+import { usePublicPdfObjectUrls } from '../hooks/usePublicPdfObjectUrls'
 
 const MAX_RESUME_BYTES = 12 * 1024 * 1024
 
@@ -56,6 +57,11 @@ function WorkspaceResumePageContent({ getToken }) {
   const [loadingPdf, setLoadingPdf] = useState(false)
   const [viewerReady, setViewerReady] = useState(false)
   const fileInputRef = useRef(null)
+  const publicPdfEntries = useMemo(
+    () => isGuestMode && publicResumeFileUrl ? [{ key: 'resume', source: publicResumeFileUrl }] : [],
+    [isGuestMode, publicResumeFileUrl],
+  )
+  const publicPdf = usePublicPdfObjectUrls(publicPdfEntries, { enabled: isGuestMode })
 
   useEffect(() => {
     return () => {
@@ -194,8 +200,10 @@ function WorkspaceResumePageContent({ getToken }) {
   }
 
   const hasResume = Boolean(resume?.uploaded)
-  const viewerKey = useMemo(() => `${resumePdfUrl || 'empty'}`, [resumePdfUrl])
-  const canRenderPreview = hasResume && viewerReady && resumePdfUrl
+  const displayedResumePdfUrl = isGuestMode ? publicPdf.urls.resume || '' : resumePdfUrl
+  const displayedPreviewError = resumePreviewError || publicPdf.errors.resume?.message || ''
+  const viewerKey = useMemo(() => `${displayedResumePdfUrl || 'empty'}`, [displayedResumePdfUrl])
+  const canRenderPreview = hasResume && viewerReady && displayedResumePdfUrl
 
   return (
     <div className="page-shell page-shell--wide page-stack pb-14">
@@ -221,8 +229,8 @@ function WorkspaceResumePageContent({ getToken }) {
             {resumeLoadError ? (
               <p className="mt-2 text-sm text-[#f3b17d]">{resumeLoadError}</p>
             ) : null}
-            {resumePreviewError ? (
-              <p className="mt-2 text-sm text-[#f3b17d]">{resumePreviewError}</p>
+            {displayedPreviewError ? (
+              <p className="mt-2 text-sm text-[#f3b17d]">{displayedPreviewError}</p>
             ) : null}
           </div>
 
@@ -254,12 +262,12 @@ function WorkspaceResumePageContent({ getToken }) {
         {hasResume ? (
           canRenderPreview ? (
             <div className="resume-viewer-frame-wrap resume-viewer-frame-wrap--glow">
-              <iframe key={viewerKey} src={resumePdfUrl} title="Resume PDF Viewer" className="resume-viewer-frame" />
+              <iframe key={viewerKey} src={displayedResumePdfUrl} title="Resume PDF Viewer" className="resume-viewer-frame" />
             </div>
-          ) : resumePreviewError ? (
+          ) : displayedPreviewError ? (
             <div className="widget-card p-6 text-sm text-[var(--color-text-soft)]">
-              <p>{resumePreviewError}</p>
-              <button type="button" onClick={() => loadResumePdf().catch(() => {})} className="button-secondary mt-4 px-4 py-2 text-sm">
+              <p>{displayedPreviewError}</p>
+              <button type="button" onClick={() => isGuestMode ? window.location.reload() : loadResumePdf().catch(() => {})} className="button-secondary mt-4 px-4 py-2 text-sm">
                 Retry Preview
               </button>
             </div>

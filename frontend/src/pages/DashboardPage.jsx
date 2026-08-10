@@ -6,7 +6,7 @@ import { TechnologyLogo } from '../components/TechnologyLogo'
 import { authenticatedRequest } from '../lib/api'
 import { getTimeGreeting } from '../lib/dashboardUtils'
 import { getSkillLevelMeta } from '../lib/skillUtils'
-import { decorateProjectShowcase } from '../lib/projectShowcaseCatalog'
+import { decorateProjectShowcase, shouldShowProjectLiveDemo } from '../lib/projectShowcaseCatalog'
 import { useGuestMode } from '../context/GuestModeContext'
 import { useAuthenticatedMediaUrl } from '../hooks/useAuthenticatedMediaUrl'
 
@@ -299,7 +299,7 @@ function CurrentBuild({ project, highlightedTechnology, getToken }) {
           </div>
           <div className="db-build-actions">
             {showcaseProject.githubUrl ? <a href={showcaseProject.githubUrl} target="_blank" rel="noreferrer" className="db-project-action db-project-action--repository"><Icon name="github" />Repository</a> : null}
-            {showcaseProject.liveDemoUrl ? <a href={showcaseProject.liveDemoUrl} target="_blank" rel="noreferrer" className="db-project-action"><Icon name="external" />Live demo</a> : null}
+            {shouldShowProjectLiveDemo(showcaseProject) ? <a href={showcaseProject.showcase.demo} target="_blank" rel="noreferrer" className="db-project-action"><Icon name="external" />Live demo</a> : null}
             <Link to="/projects" className="db-project-action db-project-action--primary">Open Project <Icon name="arrow" /></Link>
           </div>
         </div>
