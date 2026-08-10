@@ -17,7 +17,7 @@ The result is not a static portfolio with duplicated content. It is one system w
 - a focused **Recruiter Overview** for quickly understanding the developer and the work;
 - an unlocked **Guest Vault** that reuses the real workspace experience without exposing edit access.
 
-> **Live Demo:** Coming soon — production infrastructure has not been provisioned yet.
+> **Live Application:** [https://dev-vault-chi.vercel.app/portfolio/JJaaace](https://dev-vault-chi.vercel.app/portfolio/JJaaace)
 
 ## Why DevVault exists
 
@@ -263,15 +263,13 @@ It verifies health/readiness, public SPA routes, the public privacy DTO, media d
 
 ## Deployment status
 
-**Current status: deployment-ready repository; external deployment coming soon.**
+**Current status: deployed and publicly available.**
 
-The repository contains production environment validation, Vercel SPA rewrites, portable frontend/backend deployment settings, committed migrations, database transfer verification, guarded ownership handoff, smoke tests, and rollback documentation. It does **not** contain evidence that frontend, backend, PostgreSQL, Clerk production identity, or custom domains have been provisioned publicly.
-
-Before launch, the remaining work is external: provision the providers, supply production credentials through their secret managers, restore the verified data into an empty migrated PostgreSQL database, transfer ownership to the real production Clerk user, and run the documented smoke/manual checks.
+The frontend and public portfolio are hosted on Vercel, the Express API runs on Render, and PostgreSQL persistence is hosted on Neon. The repository includes production environment validation, Vercel SPA rewrites, portable frontend/backend deployment settings, committed migrations, database transfer verification, guarded ownership handoff, smoke tests, and rollback documentation.
 
 ## Screenshots
 
-Screenshots will be added before the public launch. Recommended captures:
+Screenshots will be added to the repository. Recommended captures:
 
 1. Recruiter Overview hero and featured DevVault project
 2. Owner Dashboard command deck
@@ -298,7 +296,7 @@ DevVault demonstrates practical experience with:
 
 ## Project status
 
-DevVault is in active development and final deployment preparation. The core owner workspace, recruiter overview, Guest Vault, persistence model, GitHub project synchronization boundary, production checks, and operational documentation are implemented. The next milestone is the first verified public deployment and final cross-device visual QA.
+DevVault is deployed and remains in active development. The core owner workspace, recruiter overview, Guest Vault, persistence model, GitHub project synchronization boundary, production checks, and operational documentation are implemented. The next milestone is continued cross-device visual QA and production refinement.
 
 ## Author
 
