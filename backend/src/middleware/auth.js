@@ -1,4 +1,4 @@
-const { requireAuth } = require('@clerk/express')
+const { getAuth } = require('@clerk/express')
 
 const { hasClerkConfig, allowDevAuth } = require('../config/auth')
 const { environment } = require('../config/environment')
@@ -15,7 +15,20 @@ function protectRoute(req, res, next) {
 
   if (!hasClerkConfig) return res.status(503).json({ success: false, error: { code: 'AUTH_NOT_CONFIGURED', message: 'Authentication is not configured.' } })
 
-  return requireAuth(req, res, next)
+  try {
+    const auth = getAuth(req)
+    if (!auth.userId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHENTICATED', message: 'Authentication is required.' },
+      })
+    }
+
+    req.auth = auth
+    return next()
+  } catch (error) {
+    return next(error)
+  }
 }
 
 module.exports = protectRoute
