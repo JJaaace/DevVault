@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import { DevVaultLogo } from '../branding/DevVaultLogo'
 import { getProjectStatusMeta } from '../../lib/projectUtils'
+import { shouldShowProjectLiveDemo } from '../../lib/projectShowcaseCatalog'
 import { useGuestMode } from '../../context/GuestModeContext'
 import { useAuthenticatedMediaUrl } from '../../hooks/useAuthenticatedMediaUrl'
 
@@ -61,6 +62,7 @@ function ProjectsGalleryCardComponent({
   const techStack = project.showcase.techStack || []
   const keyFeatures = project.showcase.keyFeatures || []
   const useDevVaultLogo = project.showcase.logoVariant === 'devvault-mark'
+  const showLiveDemo = shouldShowProjectLiveDemo(project)
   const { src: artworkSrc } = useAuthenticatedMediaUrl(project.showcase.image, getToken, { enabled: !isGuestMode })
 
   return (
@@ -136,11 +138,13 @@ function ProjectsGalleryCardComponent({
               GitHub
             </a>
             <a
-              href={project.showcase.demo || '#'}
+              href={showLiveDemo ? project.showcase.demo : '#'}
               target="_blank"
               rel="noreferrer"
-              aria-disabled={!project.showcase.demo}
-              className={`projects-gallery-action projects-gallery-action--secondary ${!project.showcase.demo ? 'pointer-events-none opacity-50' : ''}`.trim()}
+              aria-disabled={!showLiveDemo}
+              tabIndex={showLiveDemo ? undefined : -1}
+              onClick={showLiveDemo ? undefined : (event) => event.preventDefault()}
+              className={`projects-gallery-action projects-gallery-action--secondary ${!showLiveDemo ? 'pointer-events-none opacity-50' : ''}`.trim()}
             >
               Live Demo
             </a>
