@@ -711,7 +711,7 @@ a {
   .projects-gallery-logo-shell {
     display: grid;
     place-items: center;
-    transform: scale(1.08);
+    transform: scale(1.9);
   }
 
   .projects-gallery-image,
