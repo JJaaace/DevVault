@@ -18,6 +18,7 @@ function VaultState({ title, message, retry }) {
 }
 
 function GuestVaultNavigation({ profile }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const base = `/portfolio/${encodeURIComponent(profile.username)}/vault`
   const links = [
     ['Dashboard', base, true],
@@ -47,7 +48,24 @@ function GuestVaultNavigation({ profile }) {
           {profile.githubUrl ? <a href={profile.githubUrl} target="_blank" rel="noreferrer">GitHub</a> : null}
           {profile.linkedinUrl ? <a href={profile.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn</a> : null}
           <Link to={`/portfolio/${profile.username}`} className="guest-lock-vault px-3 py-2 text-xs">Lock the Vault</Link>
+          <button
+            type="button"
+            className="guest-vault-menu-button"
+            aria-expanded={menuOpen}
+            aria-controls="guest-vault-mobile-navigation"
+            onClick={() => setMenuOpen((current) => !current)}
+          >
+            {menuOpen ? 'Close' : 'Menu'}
+          </button>
         </div>
+        {menuOpen ? (
+          <nav id="guest-vault-mobile-navigation" className="guest-vault-mobile-menu" aria-label="Guest workspace mobile">
+            {links.map(([label, to, end]) => (
+              <NavLink key={label} to={to} end={Boolean(end)} onClick={() => setMenuOpen(false)} className={({ isActive }) => `nav-link nav-link--workspace ${isActive ? 'nav-link--active' : ''}`}>{label}</NavLink>
+            ))}
+            <Link to={`/portfolio/${profile.username}`} onClick={() => setMenuOpen(false)} className="guest-lock-vault guest-vault-mobile-overview">Return to recruiter overview</Link>
+          </nav>
+        ) : null}
       </div>
     </header>
   )

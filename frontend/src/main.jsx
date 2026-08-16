@@ -7,18 +7,20 @@ import App from './App.jsx'
 import { AppToaster } from './components/ui/AppToaster'
 import { frontendEnvironment } from './config/runtime'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { shouldInitializeClerk } from './lib/routeAccess'
 
 const clerkPubKey = frontendEnvironment.clerkPublishableKey
 
 export function Root() {
-  const isPublicGuestRoute = typeof window !== 'undefined'
-    && (window.location.pathname.startsWith('/portfolio/') || window.location.pathname.startsWith('/resume/'))
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/'
+
+  // Public recruiter routes use public API data only and must not depend on Clerk
+  // initialization, cookies, configuration, or an existing user session.
+  if (!shouldInitializeClerk(pathname)) {
+    return <BrowserRouter><App /></BrowserRouter>
+  }
 
   if (!clerkPubKey) {
-    if (isPublicGuestRoute) {
-      return <BrowserRouter><App /></BrowserRouter>
-    }
-
     return (
       <div className="app-shell flex min-h-screen items-center justify-center px-6 text-center text-[var(--color-text)]">
         <div className="surface-card surface-card--strong max-w-md px-8 py-10">
