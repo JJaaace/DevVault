@@ -30,7 +30,7 @@ function GuestVaultNavigation({ profile }) {
   ]
 
   return (
-    <header className="sticky top-0 z-40 px-4 pt-4">
+    <header className="guest-vault-header sticky top-0 z-40 px-4 pt-4">
       <div className="nav-shell nav-shell--workspace guest-vault-nav mx-auto max-w-6xl gap-4">
         <Link to={base} className="nav-brand">
           <DevVaultLogo compact />
@@ -47,7 +47,7 @@ function GuestVaultNavigation({ profile }) {
         <div className="guest-vault-actions">
           {profile.githubUrl ? <a href={profile.githubUrl} target="_blank" rel="noreferrer">GitHub</a> : null}
           {profile.linkedinUrl ? <a href={profile.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn</a> : null}
-          <Link to={`/portfolio/${profile.username}`} className="guest-lock-vault px-3 py-2 text-xs">Lock the Vault</Link>
+          <Link to={`/portfolio/${encodeURIComponent(profile.username)}`} className="guest-lock-vault px-3 py-2 text-xs">Lock the Vault</Link>
           <button
             type="button"
             className="guest-vault-menu-button"
@@ -63,7 +63,7 @@ function GuestVaultNavigation({ profile }) {
             {links.map(([label, to, end]) => (
               <NavLink key={label} to={to} end={Boolean(end)} onClick={() => setMenuOpen(false)} className={({ isActive }) => `nav-link nav-link--workspace ${isActive ? 'nav-link--active' : ''}`}>{label}</NavLink>
             ))}
-            <Link to={`/portfolio/${profile.username}`} onClick={() => setMenuOpen(false)} className="guest-lock-vault guest-vault-mobile-overview">Return to recruiter overview</Link>
+            <Link to={`/portfolio/${encodeURIComponent(profile.username)}`} onClick={() => setMenuOpen(false)} className="guest-lock-vault guest-vault-mobile-overview">Return to recruiter overview</Link>
           </nav>
         ) : null}
       </div>

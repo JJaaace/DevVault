@@ -75,7 +75,7 @@ function App() {
     <Layout>
       <RouteMetadata />
       <LaunchIntro />
-      <header className="sticky top-0 z-30 px-4 pt-4">
+      <header className="workspace-header sticky top-0 z-30 px-4 pt-4">
         <div className="nav-shell nav-shell--workspace mx-auto max-w-7xl gap-4">
           <div className="nav-brand">
             <DevVaultLogo compact />

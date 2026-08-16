@@ -426,20 +426,49 @@ html.guest-vault-transitioning::view-transition-new(root) { animation: guest-vau
 
 @media (max-width: 1100px) {
   .guest-vault-nav { flex-wrap: wrap; }
-  .guest-vault-links { order: 3; width: 100%; flex-basis: 100%; justify-content: flex-start; overflow-x: auto; padding-bottom: 0.25rem; }
+  .guest-vault-links, .guest-vault-actions > .guest-lock-vault { display: none; }
   .guest-vault-actions > a:not(.guest-lock-vault) { display: none; }
+  .guest-vault-actions { margin-left: auto; }
+  .guest-vault-menu-button { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; padding: 0.65rem 0.9rem; border: 1px solid rgba(224, 164, 90, 0.32); border-radius: 0.8rem; background: rgba(52, 37, 26, 0.56); color: #f1ca91; font: inherit; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+  .guest-vault-mobile-menu { order: 3; display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.3rem; padding: 0.55rem; border-top: 1px solid rgba(224, 164, 90, 0.18); }
+  .guest-vault-mobile-menu .nav-link--workspace { width: 100%; justify-content: flex-start; }
+  .guest-vault-mobile-overview { width: 100%; grid-column: 1 / -1; margin-top: 0.25rem; border-radius: 0.8rem; }
 }
 
 @media (max-width: 720px) {
   .guest-experience-evidence { grid-template-columns: 1fr; }
-  .guest-vault-actions { margin-left: auto; }
   .guest-vault-nav .nav-brand { min-width: 0; }
-  .guest-vault-links, .guest-vault-actions > .guest-lock-vault { display: none; }
-  .guest-vault-menu-button { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; padding: 0.65rem 0.9rem; border: 1px solid rgba(224, 164, 90, 0.32); border-radius: 0.8rem; background: rgba(52, 37, 26, 0.56); color: #f1ca91; font: inherit; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
-  .guest-vault-mobile-menu { order: 3; display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; padding: 0.55rem; border-top: 1px solid rgba(224, 164, 90, 0.18); }
-  .guest-vault-mobile-menu .nav-link--workspace { width: 100%; justify-content: flex-start; }
-  .guest-vault-mobile-overview { width: 100%; margin-top: 0.25rem; border-radius: 0.8rem; }
+  .guest-vault-mobile-menu { grid-template-columns: minmax(0, 1fr); }
   .guest-project-poster-reveal { max-height: 8.5rem; margin-top: 0.8rem; opacity: 1; transform: none; }
+}
+
+@media (max-width: 420px) {
+  .guest-vault-header { padding-inline: 0.5rem; }
+  .guest-vault-nav { gap: 0.65rem; padding: 0.75rem; }
+  .guest-vault-nav .nav-brand { gap: 0.6rem; }
+  .guest-vault-nav .nav-title { font-size: 0.98rem; }
+}
+
+@media (max-width: 720px) {
+  .guest-project-actions a,
+  .guest-credential > a,
+  .guest-footer a,
+  .guest-unlock-actions a {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .guest-project-actions a,
+  .guest-credential > a,
+  .guest-footer a,
+  .guest-unlock-actions a {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+  }
 }
 
 @media (max-width: 950px) and (max-height: 560px) {

@@ -42,5 +42,7 @@ export function resolveGuestWorkspacePath(basePath, destination) {
   if (value.startsWith('/certifications')) return `${basePath}/certifications`
   if (value.startsWith('/resume-workspace')) return `${basePath}/resume`
   if (value.startsWith('/goals') || value.startsWith('/profile') || value.startsWith('/settings')) return basePath
-  return value
+  // Keep future or accidental app-relative links inside the read-only shell.
+  // External URLs and in-page hashes do not start with `/` and pass through above.
+  return basePath
 }

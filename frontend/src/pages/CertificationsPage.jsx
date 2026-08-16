@@ -446,7 +446,7 @@ function CertReorderModal({ certifications, onSave, onClose }) {
                   type="button"
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
-                  className="grid h-8 w-8 place-items-center rounded-[0.7rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(40,29,20,0.7)] text-sm text-[var(--color-text-soft)] transition hover:bg-[rgba(60,43,28,0.9)] disabled:cursor-not-allowed disabled:opacity-30"
+                  className="grid h-11 w-11 place-items-center rounded-[0.7rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(40,29,20,0.7)] text-sm text-[var(--color-text-soft)] transition hover:bg-[rgba(60,43,28,0.9)] disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label="Move up"
                 >
                   ↑
@@ -455,7 +455,7 @@ function CertReorderModal({ certifications, onSave, onClose }) {
                   type="button"
                   onClick={() => move(index, 1)}
                   disabled={index === items.length - 1}
-                  className="grid h-8 w-8 place-items-center rounded-[0.7rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(40,29,20,0.7)] text-sm text-[var(--color-text-soft)] transition hover:bg-[rgba(60,43,28,0.9)] disabled:cursor-not-allowed disabled:opacity-30"
+                  className="grid h-11 w-11 place-items-center rounded-[0.7rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(40,29,20,0.7)] text-sm text-[var(--color-text-soft)] transition hover:bg-[rgba(60,43,28,0.9)] disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label="Move down"
                 >
                   ↓
@@ -521,7 +521,7 @@ function CertificationModal({ cert, previewUrl, previewFailed, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-label={`${cert.name} certificate preview`}
-        className="w-full max-w-5xl overflow-hidden rounded-[1.8rem] border border-[rgba(247,204,129,0.24)] bg-[rgba(29,21,15,0.96)] shadow-[0_30px_90px_rgba(9,6,4,0.54)]"
+        className="certification-preview-dialog flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[1.8rem] border border-[rgba(247,204,129,0.24)] bg-[rgba(29,21,15,0.96)] shadow-[0_30px_90px_rgba(9,6,4,0.54)]"
         initial={{ y: 20, scale: 0.97, opacity: 0 }}
         animate={{ y: 0, scale: 1, opacity: 1 }}
         exit={{ y: 16, scale: 0.98, opacity: 0 }}
@@ -537,11 +537,11 @@ function CertificationModal({ cert, previewUrl, previewFailed, onClose }) {
           <button type="button" onClick={onClose} className="button-secondary px-4 py-2 text-sm">Close</button>
         </div>
 
-        <div className="grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="min-h-[34rem] overflow-hidden rounded-[1.4rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(18,13,10,0.92)] p-3">
+        <div className="certification-preview-body grid flex-1 gap-6 overflow-y-auto p-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="certification-preview-media min-h-[34rem] overflow-hidden rounded-[1.4rem] border border-[rgba(214,160,89,0.2)] bg-[rgba(18,13,10,0.92)] p-3">
             {hasAsset && previewUrl ? (
               isFile ? (
-                <div className="grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] px-6 text-center">
+                <div className="certification-preview-asset grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] px-6 text-center">
                   <div>
                     <p className="text-lg font-semibold text-[var(--color-text)]">{cert.assetName || 'Certificate file'}</p>
                     <p className="mt-2 text-sm text-[var(--color-text-soft)]">This file type cannot be previewed safely in the browser, but it is saved and ready to download.</p>
@@ -552,21 +552,21 @@ function CertificationModal({ cert, previewUrl, previewFailed, onClose }) {
                 <iframe
                   src={previewUrl}
                   title={`${cert.name} PDF preview`}
-                  className="h-[32rem] w-full rounded-[1.1rem] bg-black/30"
+                  className="certification-preview-asset h-[32rem] w-full rounded-[1.1rem] bg-black/30"
                 />
               ) : (
                 <img
                   src={previewUrl}
                   alt={`${cert.name} certificate`}
-                  className="h-[32rem] w-full rounded-[1.1rem] object-contain bg-black/30"
+                  className="certification-preview-asset h-[32rem] w-full rounded-[1.1rem] object-contain bg-black/30"
                 />
               )
             ) : hasAsset ? (
-              <div className="grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] text-sm text-[var(--color-text-soft)]">
+              <div className="certification-preview-asset grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] text-sm text-[var(--color-text-soft)]">
                 {previewFailed ? 'Preview unavailable. Close this window and use Replace Media to upload the file again.' : 'Loading secure certificate preview…'}
               </div>
             ) : (
-              <div className="grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] text-sm text-[var(--color-text-soft)]">
+              <div className="certification-preview-asset grid h-[32rem] place-items-center rounded-[1.1rem] border border-dashed border-[rgba(214,160,89,0.24)] bg-[rgba(42,31,23,0.7)] text-sm text-[var(--color-text-soft)]">
                 Upload a certificate image or PDF to preview it here.
               </div>
             )}
@@ -1324,20 +1324,20 @@ function CertificationsPageContent({ auth }) {
                 className={`group relative overflow-hidden rounded-[1.5rem] border border-[rgba(214,160,89,0.22)] bg-[linear-gradient(145deg,rgba(48,35,24,0.92),rgba(31,23,17,0.88))] p-4 shadow-[0_20px_46px_rgba(12,8,6,0.34)] ${meta.glowClass}`}
               >
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(247,204,129,0.12),transparent_30%),radial-gradient(circle_at_86%_16%,rgba(231,155,63,0.1),transparent_24%)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                <div className="relative z-10 flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
+                <div className="certification-card-header relative z-10 flex items-start justify-between gap-3">
+                  <div className="certification-card-identity flex min-w-0 items-center gap-3">
                     <div
                       className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-[1.1rem] border border-[rgba(247,204,129,0.24)] bg-[rgba(63,43,27,0.86)] text-xl text-[var(--color-brand-ink)] transition-transform duration-300 group-hover:scale-110"
                       style={cert.accentColor ? { background: `color-mix(in srgb, ${cert.accentColor} 22%, rgba(63,43,27,0.9))`, borderColor: `color-mix(in srgb, ${cert.accentColor} 44%, rgba(247,204,129,0.24))` } : undefined}
                     >
                       {cert.logo}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-[0.65rem] uppercase tracking-[0.22em] text-[var(--color-text-muted)]">{cert.provider}</p>
-                      <h3 className="mt-1 text-lg font-semibold tracking-tight text-[var(--color-text)]">{cert.name}</h3>
+                      <h3 className="mt-1 break-words text-lg font-semibold tracking-tight text-[var(--color-text)]">{cert.name}</h3>
                     </div>
                   </div>
-                  <span className={`inline-flex rounded-full border px-3 py-1 text-[0.68rem] uppercase tracking-[0.18em] ${meta.chipClass}`}>{meta.label}</span>
+                  <span className={`certification-status-badge inline-flex rounded-full border px-3 py-1 text-[0.68rem] uppercase tracking-[0.18em] ${meta.chipClass}`}>{meta.label}</span>
                 </div>
 
                 <div className="relative z-10 mt-4 space-y-2.5 text-sm">
@@ -1385,14 +1385,14 @@ function CertificationsPageContent({ auth }) {
                     <p className="mb-1 text-[0.68rem] uppercase tracking-[0.22em] text-[var(--color-text-muted)]">Associated projects</p>
                     <div className="flex flex-wrap gap-2">
                       {cert.associatedProjects.map((project) => (
-                        <Link key={project} to={resolvePath('/projects')} className="chip">
+                        <Link key={project} to={resolvePath('/projects')} className="certification-project-chip chip">
                           {project}
                         </Link>
                       ))}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                  <div className="certification-card-actions flex flex-wrap gap-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100">
                     <button type="button" onClick={() => setSelectedCertification(cert)} className="button-primary px-4 py-2 text-xs">
                       View Certificate
                     </button>

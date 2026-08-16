@@ -46,7 +46,7 @@ export function SettingsPage() {
 
         <div className="widget-card widget-card--accent p-6">
           <p className="section-eyebrow">Access</p>
-          <div className="mt-4 flex items-center justify-between gap-4">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="font-medium text-[var(--color-text)]">Session controls</p>
               <p className="mt-2 text-sm text-[var(--color-text-soft)]">Use Clerk to manage sign-out and account actions.</p>
@@ -64,7 +64,7 @@ export function SettingsPage() {
 
         <div className="widget-card p-6">
           <p className="section-eyebrow">Workspace</p>
-          <div className="mt-4 flex items-center justify-between gap-4">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="font-medium text-[var(--color-text)]">Show coding streak on dashboard</p>
               <p className="mt-2 text-sm text-[var(--color-text-soft)]">Turn this off when preparing a recruiter-facing demo view.</p>

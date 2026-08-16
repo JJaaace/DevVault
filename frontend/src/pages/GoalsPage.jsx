@@ -585,7 +585,7 @@ function GoalEditorModal({ goal, onSave, onClose }) {
           <button type="button" onClick={onClose} className="button-secondary px-4 py-2 text-sm">Close</button>
         </div>
 
-        <div className="grid gap-5 p-6 lg:grid-cols-2">
+        <div className="goals-modal-body grid gap-5 overflow-y-auto p-6 lg:grid-cols-2">
           <label className="field-label">
             <strong>Title</strong>
             <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} className="field-input" />
@@ -704,7 +704,7 @@ function GoalReorderModal({ goals, onSave, onClose }) {
           <button type="button" onClick={onClose} className="button-secondary px-4 py-2 text-sm">Close</button>
         </div>
 
-        <div className="space-y-3 p-6">
+        <div className="goals-modal-body space-y-3 overflow-y-auto p-6">
           {items.map((goal, index) => (
             <div key={goal.id} className="flex items-center justify-between gap-4 rounded-[1.2rem] border border-[rgba(214,160,89,0.18)] bg-[rgba(24,17,12,0.84)] px-4 py-3">
               <div>
