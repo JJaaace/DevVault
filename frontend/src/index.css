@@ -922,6 +922,24 @@ a {
     pointer-events: auto;
   }
 
+  .projects-gallery-card:focus,
+  .projects-gallery-card:focus-within {
+    border-color: rgba(247, 204, 129, 0.42);
+  }
+
+  .projects-gallery-card:focus-visible,
+  .projects-gallery-card:focus-within {
+    outline: 3px solid rgba(247, 204, 129, 0.5);
+    outline-offset: 3px;
+  }
+
+  .projects-gallery-card:focus .projects-gallery-hover-overlay,
+  .projects-gallery-card:focus-within .projects-gallery-hover-overlay {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
   .projects-gallery-description {
     margin: 0;
     font-size: 0.82rem;
@@ -1008,6 +1026,10 @@ a {
 
     .projects-gallery-actions > * {
       flex: 1 1 100%;
+    }
+
+    .projects-gallery-action {
+      min-height: 2.75rem;
     }
   }
 
@@ -3342,10 +3364,19 @@ a {
 
   .goals-modal-card {
     width: min(100%, 74rem);
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   .goals-modal-card--wide {
     width: min(100%, 58rem);
+  }
+
+  .goals-modal-body {
+    min-height: 0;
+    flex: 1 1 auto;
   }
 
   .goals-page .chip--accent {
@@ -3985,6 +4016,129 @@ a {
 
     .inside-vault-timeline-item {
       margin-left: 0.78rem;
+    }
+  }
+
+  .auth-page .cl-rootBox,
+  .auth-page .cl-cardBox,
+  .auth-page .cl-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .resume-status-layout > *,
+  .certification-card-header > *,
+  .certification-card-identity > * {
+    min-width: 0;
+  }
+
+  .resume-file-name {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .certification-status-badge {
+    flex: 0 0 auto;
+    max-width: 100%;
+  }
+
+  @media (hover: none), (pointer: coarse) {
+    .certification-card-actions {
+      opacity: 1;
+    }
+
+    .certification-card-actions > *,
+    .cert-technology-chip,
+    .certifications-grid .chip {
+      min-height: 2.75rem;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .workspace-header {
+      padding-inline: 0.5rem;
+    }
+
+    .workspace-header .nav-shell {
+      flex-wrap: wrap;
+      padding: 0.75rem;
+    }
+
+    .page-shell,
+    .auth-page {
+      padding-inline: 0.75rem;
+    }
+
+    .auth-page > .surface-card {
+      padding-inline: 1rem;
+    }
+
+    .resume-status-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .resume-actions {
+      width: 100%;
+    }
+
+    .resume-actions > * {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+
+    .resume-viewer-frame-wrap,
+    .resume-viewer-frame {
+      min-height: min(32rem, 72vh);
+    }
+
+    .goals-modal-shell {
+      padding: 0.5rem;
+    }
+
+    .goals-modal-card > div,
+    .certification-preview-dialog > div {
+      padding-inline: 1rem;
+    }
+
+    .goals-modal-card > div:first-child,
+    .certification-preview-dialog > div:first-child {
+      flex-wrap: wrap;
+    }
+
+    .certification-preview-body {
+      gap: 1rem;
+      padding-block: 1rem;
+    }
+
+    .certification-preview-media {
+      min-height: 20rem;
+    }
+
+    .certification-preview-asset {
+      height: 18rem;
+    }
+  }
+
+  @media (max-width: 375px) {
+    .certification-card-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .certification-status-badge {
+      margin-left: 3.75rem;
+      justify-self: start;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .cert-technology-chip,
+    .certification-project-chip,
+    .certification-card-actions > * {
+      min-height: 2.75rem;
     }
   }
 

@@ -58,8 +58,8 @@ function WorkspaceNavGroup({ mobile = false, onNavigate }) {
       id={mobile ? 'workspace-mobile-navigation' : undefined}
       aria-label={mobile ? 'Workspace mobile' : 'Workspace'}
       className={mobile
-        ? 'nav-links nav-links--workspace absolute right-0 top-[calc(100%+0.75rem)] z-50 grid min-w-56 gap-2 rounded-[1.25rem] border border-[rgba(214,160,89,0.24)] bg-[rgba(31,23,17,0.98)] p-3 shadow-[0_24px_70px_rgba(9,6,4,0.62)] md:hidden'
-        : 'nav-links nav-links--workspace hidden gap-2 md:flex md:flex-wrap md:justify-end'}
+        ? 'nav-links nav-links--workspace absolute right-0 top-[calc(100%+0.75rem)] z-50 grid min-w-56 gap-2 rounded-[1.25rem] border border-[rgba(214,160,89,0.24)] bg-[rgba(31,23,17,0.98)] p-3 shadow-[0_24px_70px_rgba(9,6,4,0.62)] xl:hidden'
+        : 'nav-links nav-links--workspace hidden gap-2 xl:flex xl:flex-wrap xl:justify-end'}
     >
       <span ref={indicatorRef} className="nav-link-indicator" aria-hidden="true" />
       {navigationItems.map((item) => (
@@ -75,7 +75,7 @@ export function WorkspaceNavigation() {
     <div className="relative">
       <button
         type="button"
-        className="button-secondary px-4 py-2 text-sm md:hidden"
+        className="button-secondary px-4 py-2 text-sm xl:hidden"
         aria-expanded={open}
         aria-controls="workspace-mobile-navigation"
         onClick={() => setOpen((current) => !current)}

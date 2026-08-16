@@ -216,10 +216,10 @@ function WorkspaceResumePageContent({ getToken }) {
       </section>
 
       <section className="surface-card surface-card--strong p-5 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+        <div className="resume-status-layout flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 max-w-full">
             <p className="section-eyebrow">Status</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text)]">
+            <h3 className="resume-file-name mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text)]">
               {loading ? 'Loading...' : hasResume ? (resume.fileName || 'Resume.pdf') : 'No resume uploaded'}
             </h3>
             <p className="mt-2 text-sm text-[var(--color-text-soft)]">
@@ -234,7 +234,7 @@ function WorkspaceResumePageContent({ getToken }) {
             ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="resume-actions flex flex-wrap gap-3">
             {!isGuestMode ? <button type="button" onClick={handleUploadClick} disabled={uploading} className="button-primary px-4 py-2 text-sm disabled:opacity-60">
               {uploading ? 'Uploading...' : hasResume ? 'Replace Resume' : 'Upload Resume'}
             </button> : null}

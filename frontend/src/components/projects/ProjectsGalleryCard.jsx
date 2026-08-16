@@ -69,6 +69,7 @@ function ProjectsGalleryCardComponent({
     <article
       className={`projects-gallery-card ${project.showcase.featured ? 'projects-gallery-card--featured' : ''}`.trim()}
       style={{ '--showcase-delay': `${Math.min(index, 10) * 90}ms` }}
+      tabIndex={0}
     >
       <div className="projects-gallery-media">
         {useDevVaultLogo ? (

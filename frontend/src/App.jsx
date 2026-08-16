@@ -10,6 +10,7 @@ import { LaunchIntro } from './components/branding/LaunchIntro'
 import { GuestVaultShell } from './components/guest/GuestVaultShell'
 import { RouteMetadata } from './components/RouteMetadata'
 import { NotFoundState } from './components/NotFoundState'
+import { isPublicPortfolioRoute } from './lib/routeAccess'
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then(({ LoginPage: Page }) => ({ default: Page })))
 const SignupPage = lazy(() => import('./pages/SignupPage').then(({ SignupPage: Page }) => ({ default: Page })))
@@ -66,7 +67,7 @@ function GuestRoutes() {
 
 function App() {
   const location = useLocation()
-  const isGuestRoute = location.pathname.startsWith('/portfolio/') || location.pathname.startsWith('/resume/')
+  const isGuestRoute = isPublicPortfolioRoute(location.pathname)
 
   if (isGuestRoute) return <><RouteMetadata /><GuestRoutes /></>
 
@@ -74,8 +75,8 @@ function App() {
     <Layout>
       <RouteMetadata />
       <LaunchIntro />
-      <header className="sticky top-0 z-30 px-4 pt-4">
-        <div className="nav-shell nav-shell--workspace mx-auto max-w-6xl gap-4">
+      <header className="workspace-header sticky top-0 z-30 px-4 pt-4">
+        <div className="nav-shell nav-shell--workspace mx-auto max-w-7xl gap-4">
           <div className="nav-brand">
             <DevVaultLogo compact />
             <div>
