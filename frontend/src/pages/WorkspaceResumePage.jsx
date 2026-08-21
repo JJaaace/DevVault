@@ -178,7 +178,8 @@ function WorkspaceResumePageContent({ getToken }) {
 
   const handleOpenResume = async () => {
     try {
-      const url = resumePdfUrl || await loadResumePdf()
+      const url = displayedResumePdfUrl || (isGuestMode ? '' : await loadResumePdf())
+      if (!url) throw new Error('Resume preview is still loading.')
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (error) {
       toast.error(error.message || 'Unable to open resume.')
@@ -187,7 +188,8 @@ function WorkspaceResumePageContent({ getToken }) {
 
   const handleDownloadResume = async () => {
     try {
-      const url = resumePdfUrl || await loadResumePdf()
+      const url = displayedResumePdfUrl || (isGuestMode ? '' : await loadResumePdf())
+      if (!url) throw new Error('Resume preview is still loading.')
       const anchor = document.createElement('a')
       anchor.href = url
       anchor.download = resume?.fileName || 'Resume.pdf'
@@ -240,10 +242,10 @@ function WorkspaceResumePageContent({ getToken }) {
             </button> : null}
             {hasResume ? (
               <>
-                <button type="button" onClick={handleOpenResume} disabled={loadingPdf} className="button-secondary px-4 py-2 text-sm disabled:opacity-60">
+                <button type="button" onClick={handleOpenResume} disabled={loadingPdf || (isGuestMode && !displayedResumePdfUrl)} className="button-secondary px-4 py-2 text-sm disabled:opacity-60">
                   Open in New Tab
                 </button>
-                <button type="button" onClick={handleDownloadResume} disabled={loadingPdf} className="button-secondary px-4 py-2 text-sm disabled:opacity-60">
+                <button type="button" onClick={handleDownloadResume} disabled={loadingPdf || (isGuestMode && !displayedResumePdfUrl)} className="button-secondary px-4 py-2 text-sm disabled:opacity-60">
                   Download
                 </button>
                 {isGuestMode ? <button type="button" onClick={() => window.print()} className="button-secondary px-4 py-2 text-sm">Print / Save PDF</button> : null}
